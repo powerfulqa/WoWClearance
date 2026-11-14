@@ -1,6 +1,6 @@
 # WoWClearance - Addon Development Guide
 
-> **Status: v0.6.0, WoW: Forever.** This is the contributor guide for
+> **Status: v0.8.0, WoW: Forever.** This is the contributor guide for
 > WoWClearance as it runs on **WoW: Forever** (Interface 16001,
 > `WOW_PROJECT_MAINLINE`, a Mainline/retail 12.1.x API surface). It covers
 > the code conventions, file layout and load order, the saved-variable
@@ -245,7 +245,7 @@ deliberate. Using `C_Timer.After` for new code is fine; verify any other
 
 ### File layout
 
-The `.toc` is the load-order source of truth. Current order (34 files):
+The `.toc` is the load-order source of truth. Current order (36 files: the 34 numbered below, plus `WoWClearance_Kit.lua` loaded before all of them and `WoWClearance_Daylight.lua` loaded after all of them):
 
 | # | File | Role |
 |---|------|------|
@@ -262,7 +262,7 @@ The `.toc` is the load-order source of truth. Current order (34 files):
 | 22 | `WoWClearance_Events.lua` | The event hub, `EnsureDB` / `EnsureAccountDB`, the DB proxy, the vendor loop, slash commands, `Bindings.xml` handlers, and most residual glue. |
 | 23 | `WoWClearance_LootHistory.lua` | `NS.LootHistory`: the persisted per-pickup Loot Log History ring (v0.6.0). Loads after Events. |
 | 24 | `WoWClearance_HistoryWindow.lua` | The Sold History window over `NS.recentSoldLog` / `NS.recentDeletedLog`. |
-| 25-28 | `WoWClearance_Comms.lua`, `_RealmComms.lua`, `_GuildShare.lua`, `_ServerShare.lua` | `NS.Comms` transport + version gossip, the realm-channel transport (not ported, see below), and their two consumers. |
+| 25-28 | `WoWClearance_Comms.lua`, `_RealmComms.lua`, `_GuildShare.lua`, `_ServerShare.lua` | `NS.Comms` transport + version gossip, the realm-channel transport (rebuilt in v0.6.0, see below), and their two consumers. |
 | 29-34 | `BagDisplay`, `BugReport`, `Minimap`, `Tooltip`, `BagContextMenu`, `HelpPanel` | Bag-slot tint + `/wc sellinfo` trace, `/wc bugreport`, minimap + compartment entry, tooltip annotations, Alt+Right-Click menu, Help / FAQ. |
 
 Two load-order failures in this port each blanked whole files: a
@@ -713,7 +713,7 @@ and 15).
 ### Tests
 
 `lua tests/run_all.lua` runs every invariant suite and is the source of
-truth for the list (12 suites today; CI and the release gate both call
+truth for the list (10 suites today; CI and the release gate both call
 it). Use `lua5.1` to match CI. The suites:
 
 | Suite | Kind | Covers |
@@ -793,6 +793,8 @@ worth knowing:
 - `/wc clean apply` - auto-resolve list conflicts (precedence:
   blacklist > deleteList > whitelist).
 - `/wc bugreport` - diagnostic dump for issue reports.
+- `/wc highlight` - flip `DB.itemHighlighting`, the master switch over
+  bag borders and item levels (`NS.SyncItemHighlighting`). v0.8.0.
 - `/wc loot` - open the Loot Log window (`NS.ToggleLootWindow`). v2.46.0.
   Four views since v0.6.0: Session, Character, Account, and History (the
   persisted per-pickup ring in `WoWClearance_LootHistory.lua`).
@@ -1030,7 +1032,7 @@ chance-on-hit proc pairings (`PREQ` / `PDAT`) between guild peers and
 wrote them into `ADB.chanceProcConfirmedItems` with a local-wins merge.
 The file, its message types, `/wc procsharetest` and
 `NS.recentProcShareMerges` are gone. History is in
-`docs/CHANGELOG-EbonClearance.md` (v2.53.0).
+EbonClearance's `CHANGELOG.md` (v2.53.0).
 
 ### Realm-wide comms + Server Stats odometer (`NS.RealmComms` / `NS.ServerShare`, v2.58.0, transport rebuilt v0.6.0)
 
@@ -1207,6 +1209,40 @@ account-wide `ADB.lootHistory`, `MAX = 20000`):
 - The "saved by re-check" log (`NS.recentSavedLog`) stays session-only on
   purpose.
 
+### DaylightUI integration (v0.8.0)
+
+Built only against DaylightUI's public plugin API (`DaylightUI.API`, its
+`API.md`). Its licence forbids copying its code, art or text: read it to
+find the call, then write our own. Two homes:
+
+- `WoWClearance_BagDisplay.lua`, inside `installHostBagBorderHook`, beside
+  the other bag UI adapters:
+  - `tryPluginApiHost`: borders through `me.Paint("bagslot", ...)`, drawn
+    on the `API.Attach(slot)` holder. These slots are flat, so the ring is
+    a solid 2 px border (`holder._wc_flatRing`), not the additive glow.
+    Slots from another character's saved bags arrive as previews and are
+    skipped.
+  - `tryPluginApiBagGroups`: one bag group per list (keys saved in the
+    host's own profile), a wrap of its `Categories.Assign` to file items,
+    a row for our menu in its Alt+Right-Click menu, its Lock folded into
+    `ctx.blacklisted` (`WC_compCache.hostLocked`), its junk mark as a junk
+    signal (`hostMarkedJunk`), and its own junk sale switched off while
+    `DB.sellAtVendor` is on.
+- `WoWClearance_Daylight.lua` (loads last): the look, a plugin section in
+  its options whose rows read and write our own DB (get / set, one copy of
+  each setting), `/dui wc`, a broker data text, and window movers.
+
+Traps, each of which cost a round trip:
+
+- **Saved variables are nil at file scope.** `WoWClearanceDB.daylightLook`
+  is read inside the skin callback. A file-scope check always saw nil and
+  the off switch did nothing.
+- **`me.Wrap` / `me.Hook` targets are not promised stable.** Paint,
+  Attach, RegisterSkin, RegisterMover, RegisterCommand and the options
+  rows are. Every lookup on the host's module tables is type-checked, and
+  a miss leaves WoWClearance behaving as if the host were absent.
+- **A `.toc` file-list change needs a full client restart**, not `/reload`.
+
 ### `WoWClearance_Events.lua` is at the 200-locals cap
 
 Lua 5.1 allows at most 200 local variables in one function, and a file's
@@ -1268,7 +1304,7 @@ If you add a new migration, put it with the others at the top of
 
 Since v2.71.0 the entire sell/keep decision lives in
 `WoWClearance_Decision.lua` (Stage 1 of the decision-classifier plan,
-`docs/specs/2026-07-29-decision-classifier-design.md`; CODE_REVIEW item 6):
+`EbonClearance's docs/specs/2026-07-29-decision-classifier-design.md`; CODE_REVIEW item 6):
 
 - **`NS.Decision.sell(ctx)`** is the PURE core: it reads only the ctx
   table (plain values + caller-supplied thunks) - no WoW API, no `DB`,
@@ -1341,7 +1377,15 @@ state snapshot and answers to ONE verdict source. The remaining
 hand-maintained parts are the narration/label branches, and the
 sentinels flag those if they fall behind the core.
 
-### Grey items are always sold, independent of every other setting
+### Grey items are sold by default, independent of the rule settings
+
+> **v0.8.0:** the player can now turn this off. `DB.sellGreys == false`
+> (Merchant Settings, "Sell grey items") reaches the core as
+> `ctx.sellGreys` and switches `isJunk` off for greys; nil reads as on. A
+> grey on the Sell List still sells through `whitelistPass`. A host bag
+> UI's "sell as junk" mark (`ctx.hostMarkedJunk`) also sets `isJunk`, at
+> any quality. Everything below still holds with the switch on, and the
+> three passes must still not be merged.
 
 In the decision core (`Decision.sell`; historically `WC_IsSellable`),
 positive sell signals are ORed together in the initial
@@ -1382,7 +1426,7 @@ mirroring `DB.merchantName` / `DB.scavengerName`, the shared `"CRITTER"`
 companion slot, and the cycle resetting on `MERCHANT_CLOSED`. All of that
 code was removed in PORT_STATUS work item 2, stage B (about 3,000 lines),
 along with `WoWClearance_Companion.lua` and the Scavenger panel. The full
-text is in git history and `docs/CHANGELOG-EbonClearance.md`.
+text is in git history and EbonClearance's `CHANGELOG.md`.
 
 ### `WC_Delay` callbacks must surface errors via `geterrorhandler`
 
@@ -1402,62 +1446,31 @@ delete list on first install is intentional. If a future scenario needs to
 pre-populate specific IDs, use the `_seededLists` guard to avoid re-seeding
 existing users.
 
-### Auto-delete-on-pickup shares the vendor delete path; two WC-TRAPs (v2.42.0)
+### Deleting is one Delete Next press per item (v0.6.0)
 
-`DB.autoDeleteOnPickup` (account-wide, default off, gated by `enableDeletion`)
-destroys Delete-List items as they enter the bags. To keep it from drifting
-from the vendor delete, two helpers on `WC_compCache` are the single source of
-truth, used by BOTH `BuildQueue`'s delete branch and `runAutoDeleteOnPickup`:
+**The automatic delete paths were removed in the port.** On this client
+`DeleteCursorItem` needs a hardware event, so the vendor-run delete,
+auto-delete on pickup (`runAutoDeleteOnPickup`) and auto-delete grey on
+loot (`runAutoDeleteGrey`) are gone. `DB.autoDeleteOnPickup` and
+`DB.autoDeleteGreyOnLoot` may still sit in old saves; nothing reads them
+as behaviour.
 
-- `deleteListSlotEligible(bag, slot)` - the policy (a delegate to
-  `Decision.deleteEligible`: on the list, not locked, plus the Keep /
-  account Sell / equipped rescue vetoes). Do not re-inline this into
-  either caller.
-- `executeBagSlotDelete(bag, slot, itemID, count, quality, announce)` - the
-  destructive sequence (pickup, `pendingDelete`, `DeleteCursorItem`, stat
-  bumps); `announce` prints the per-item chat line on the auto path only.
+What remains is `WoWClearance_DeleteNext` (a key binding and the Delete
+List panel button), which deletes ONE item per press:
 
-`runAutoDeleteOnPickup` runs from the existing BAG_UPDATE debounce frame
-(`WC_compCache.bagUpdateFrame`), never the raw `BAG_UPDATE` branch. Two
-`WC-TRAP` markers guard it (also locked by Test 88aa):
+- `WC_compCache.deleteListSlotEligible(bag, slot)` is the policy (a
+  delegate to `Decision.deleteEligible`: on the list, not locked, plus
+  the Keep / account Sell / equipped rescue vetoes). Do not re-inline it.
+- `WC_compCache.executeBagSlotDelete(...)` is the destructive sequence
+  (pickup, `pendingDelete`, `DeleteCursorItem`, stat bumps). WC-TRAP: do
+  not add a second raw `PickupContainerItem` + `DeleteCursorItem` path;
+  the helper owns the popup serialisation.
+- With "Mark grey items for deletion" on (`DB.markGreyForDeletion`), once
+  the Delete List is clear the press takes `WC_compCache.nextGreyToDelete()`:
+  the cheapest grey that is not kept, equipped, a quest item or locked by
+  a host bag UI.
 
-- **No `InCombatLockdown` gate** - looks like a missing combat guard, but
-  `DeleteCursorItem` was not combat-protected on 3.3.5a and farming happens in
-  combat, which is the whole point. Do not add one. (The marker's premise
-  is a 3.3.5a measurement; it has not been re-measured on Forever in
-  PORT_STATUS. Measure before changing it in either direction.)
-- **One delete per debounce cycle** (no batch loop) - looks like a missing
-  batch, but each delete fires the next BAG_UPDATE, which re-fires the
-  debounce for the next item. The scan waits on a VISIBLE `DELETE_*` popup
-  (not on `pendingDelete`): a low-rarity item deletes with no popup and never
-  clears `pendingDelete`, so gating on `pendingDelete` would wedge the cascade
-  after the first item. A batch loop breaks the single-popup serialisation.
-
-### Auto-delete grey on loot + conflicting-addon warning (v2.49.2)
-
-`DB.autoDeleteGreyOnLoot` (per-character, default off, gated by `enableDeletion`)
-destroys grey (quality 0) drops the instant they land in bags, for players who
-value bag space over the copper a grey vendors for. It uses the item's quality
-field directly, so there is no per-itemID list to tend. Implemented as
-`WC_compCache.runAutoDeleteGrey`, dispatched from the BAG_UPDATE debounce
-**after** `WC_ScanLootDelta` so a just-looted grey is counted as loot before the
-(synchronous, no-popup) delete removes it.
-
-Gate order (all must hold): `WC_IsAddonEnabledForChar()` (master Enable +
-per-character allowlist), `DB.enableDeletion`, `DB.autoDeleteGreyOnLoot`, not
-`vendorRunning`, no merchant open (`MerchantFrame:IsShown()` - a vendor
-round-trip yields copper the delete throws away), no visible `DELETE_*` popup /
-held cursor, then per slot: `quality == 0`, positive `sellPrice` (guards quest
-keys / 0-value curiosities), `itemType ~= "Quest"`, not `IsEquippedItem`, and not
-on `DB.blacklist` (Keep List) / `ADB.whitelist` (account Keep) / `DB.blacklistAuto`
-(auto-blacklist) / `DB.deleteList` (manual delete path owns those). One delete
-per burst; the delete re-fires the debounce for the next grey.
-
-WC-TRAP: `runAutoDeleteGrey` reuses `WC_compCache.executeBagSlotDelete` (the same
-shared helper the vendor delete and auto-delete-on-pickup use). Do NOT invent a
-parallel `PickupContainerItem` + `DeleteCursorItem` path - the shared helper owns
-the `pendingDelete` / `HookDeletePopupOnce` popup serialisation, and a second raw
-delete path would race the popup mutex.
+### Conflicting-addon warning (v2.49.2)
 
 `DB.warnConflictingAddons` (per-character, default on, opt-out) surfaces a modal
 warning popup (`StaticPopupDialogs["WC_CONFLICT_WARNING"]`, "Open Settings" jumps
@@ -1470,14 +1483,8 @@ references in new WC artefacts" rule, only the `IsAddOnLoaded` folder-name strin
 is specific; the helper name, local variables, comments, and the bug-report line
 all stay neutral ("third-party auto-delete addon"). Since the port the folder
 check goes through `C_AddOns.IsAddOnLoaded` (cached as `IsAddOnLoaded`).
-**Exception:** the popup copy
-itself NAMES the conflicting addon ("Auto Delete") - a user-sanctioned one-off
-carve-out from the "No third-party addon references in new WC artefacts" rule,
-granted because the detection is folder-specific and naming it makes the warning
-actionable. The carve-out is that single `L[]` string; everything else stays
-neutral (an `WC-TRAP` marker on the popup definition records this so a future
-reader does not "neutralise" it back). The bug report's Loaded Addons dump lists
-the addon by folder name a few lines below the neutral yes/no capability flag.
+The popup copy is neutral too ("Another addon that deletes items is also
+running"); the bug report's Loaded Addons dump lists the addon by folder name.
 This mirrors the host-bag-UI detection convention (specific globals in code,
 neutral framing everywhere except the one sanctioned player-facing string). The
 opt-out toggle lives on
@@ -1792,10 +1799,10 @@ load-bearing details:
   GetTime is frame-constant). An error mid-flush can therefore never
   leak a stale snapshot into a later frame; standalone callers just
   build a fresh one.
-- **Scanners that run AFTER `runAutoDeleteOnPickup` re-verify the live
+- **Scanners later in the chain re-verify the live
   slot** (`C_Container.GetContainerItemID(e.bag, e.slot) == id`) before
-  tooltip work or destructive action - the pickup scan can synchronously
-  destroy one no-popup item mid-chain, and the itemID-keyed caches
+  tooltip work or destructive action - a slot can empty or change
+  mid-chain, and the itemID-keyed caches
   (resilience / tome / bind type) must not be poisoned by scanning an
   emptied slot.
 - **Snapshot quality is a pre-gate, never a verdict.** It comes from
@@ -1930,20 +1937,7 @@ Guards that keep the delta honest (do not remove):
   counted - it re-baselines instead.
 - **Skips while the cursor holds an item** (`CursorHasItem`) so a bag
   reorganise (pick up, drop back) does not credit a phantom +1.
-- **Skips items destined for auto-delete** (v2.46.6). When
-  `DB.enableDeletion` AND `DB.autoDeleteOnPickup` are both on, an item on
-  the Delete List is never bumped into `lootedItemCounts`. Without this,
-  the auto-mark-Resilience scan (which runs earlier in the same burst and
-  adds items to the Delete List) would leave ghost rows: the item sits in
-  bags between the auto-mark add and the actual destroy on the next
-  burst, gets credited as looted, then disappears - row sticks with an
-  unresolved `item:XXXXX` name because `GetItemInfo` hadn't cached
-  metadata for items the player never tooltip-hovered (Broyo's bug).
-  WC-TRAP: the gate MUST check both flags - with `autoDeleteOnPickup`
-  off, Delete-Listed items stay in bags for manual vendoring and ARE
-  genuine loot. The skip uses `NS.IsInSet` (not the file-local `IsInSet`,
-  which is declared below `WC_ScanLootDelta` in the chunk and is not a
-  captured upvalue at the function's definition point).
+- *(Removed in the port: the "skips items destined for auto-delete" rule. Auto-delete on pickup no longer exists and `DB.autoDeleteOnPickup` is cleared in `EnsureDB`, so a Delete-Listed item in your bags is counted as loot like any other.)*
 
 The three aggregate views store per-itemID counts (never an event log), in three
 places: in-memory `WC_lootSession` (Session view), per-character
@@ -2084,7 +2078,9 @@ Allowed alternatives when integration code genuinely needs to be discussed:
 
 The runtime detection still calls the specific global (`_G.Bagnon`, `LibStub("AceAddon-3.0"):GetAddon("AdiBags")`, etc.) - that's necessary for the API to work - but the comment explaining what's happening uses neutral framing.
 
-**Existing mentions stay.** Pre-v2.29.0 comments (now in `WoWClearance_Events.lua` and the split files) and entries in `NOTICE.md` / `docs/CHANGELOG-EbonClearance.md` remain untouched. The rule is forward-only.
+**One deliberate exception: DaylightUI (owner's decision, 2026-11-14).** It may be named in `WoWClearance_Daylight.lua`, the "Use DaylightUI look" toggle and its tooltip, the bag adapter's detection, and the docs that describe them. Do not neutralise those in a cleanup.
+
+**Existing mentions stay.** Pre-v2.29.0 comments (now in `WoWClearance_Events.lua` and the split files) and entries in `NOTICE.md` / EbonClearance's `CHANGELOG.md` remain untouched. The rule is forward-only.
 
 Rationale: WC reads as a self-contained piece of engineering, not a synthesis or a port. Comments explain WHY a piece of code exists and HOW it works, never "where the idea came from". Borrowing another addon's terminology in WC comments dilutes that voice and signals derivation where the implementations are WC-native.
 

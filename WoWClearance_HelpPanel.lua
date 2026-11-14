@@ -8,7 +8,7 @@
 -- in a file-scope WC_HELP_ENTRIES table; section markers in the list
 -- drive the build's section grouping + collapsible state.
 --
--- Design spec: docs/specs/2026-05-26-help-faq-panel-design.md
+-- Design spec: EbonClearance's docs/specs/2026-05-26-help-faq-panel-design.md
 --
 -- Cross-file dependencies (resolved lazily at call time):
 --   * NS.compCache (WC_compCache.initPanel, setPanelWidth, etc.)

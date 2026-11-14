@@ -27,16 +27,14 @@ architecture, the test suites, and the localization templates. What did
 not: the Project Ebonhold affix and chance-on-hit subsystem, which is
 specific to that private server and is disabled in this fork.
 
-EbonClearance's own release history is preserved verbatim in
-[`docs/CHANGELOG-EbonClearance.md`](docs/CHANGELOG-EbonClearance.md).
-It describes EbonClearance, not WoWClearance, and its version numbers,
-dates and feature claims belong to that project. WoWClearance's own
-history starts at v0.1.0 in [`CHANGELOG.md`](CHANGELOG.md).
+EbonClearance's own release history is in
+[its changelog](https://github.com/powerfulqa/EbonClearance/blob/master/CHANGELOG.md). It describes EbonClearance,
+not WoWClearance, and its version numbers, dates and feature claims belong
+to that project. WoWClearance's own history is in
+[`CHANGELOG.md`](CHANGELOG.md).
 
-Design documents under `docs/plans/` and `docs/specs/` are inherited
-EbonClearance design records. Their identifiers were renamed so they
-still describe the code in this repository, but the decisions they
-record were taken during EbonClearance's development.
+The design notes and plans behind the inherited features are in
+[EbonClearance's `docs/`](https://github.com/powerfulqa/EbonClearance/tree/master/docs). They are not copied here.
 
 ---
 

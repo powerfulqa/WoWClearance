@@ -29,11 +29,12 @@ from `Bindings.xml`.
 
 | File | Owns |
 |------|------|
-| [WoWClearance_Core.lua](../WoWClearance_Core.lua) | Provenance/fingerprint, shared "junk-drawer" state, `STATE` constants, the `NS` bootstrap, and the `EnsureDB` / `EnsureAccountDB` SavedVariables migrations. Loads first; depends on nothing. |
+| [WoWClearance_Kit.lua](../WoWClearance_Kit.lua) | The author's shared kit (`NS.Kit`: colours, chat printer, copy window), a byte-identical copy of a file a sibling addon ships. Loads first. Never edit it here. |
+| [WoWClearance_Core.lua](../WoWClearance_Core.lua) | Provenance/fingerprint, shared "junk-drawer" state (`WC_compCache`), `STATE` constants and the `NS` bootstrap. Depends on nothing but the kit. (`EnsureDB` / `EnsureAccountDB` live in `Events.lua`.) |
 | [WoWClearance_Decision.lua](../WoWClearance_Decision.lua) | The sell/keep/delete decision core (v2.71.0-v2.71.3). `NS.Decision.sell(ctx)` and `NS.Decision.deleteEligible(ctx)` are PURE (no WoW API, no DB) and return verdicts + reason tokens; two adapters (`buildCtx` for bag slots, `buildTooltipCtx` for hovers/chat links) share one snapshot helper. `WC_IsSellable` + `deleteListSlotEligible` in Events delegate here. Runtime-tested by `tests/test_decision.lua`. |
 | [WoWClearance_Protection.lua](../WoWClearance_Protection.lua) | What to *keep*: Resilience, tome / recipe and learn-state detection, plus the Forever protections' detectors (`isUncollectedAppearance`, `isTradeableOrRefundable`). |
-| [WoWClearance_Process.lua](../WoWClearance_Process.lua) | The Process Bags engine: Disenchant / Mill / Prospect / Lockpick. |
-| [WoWClearance_BagDisplay.lua](../WoWClearance_BagDisplay.lua) | Bag-slot sell-border tint + the sellinfo inspector (host bag UI adapter). Since v2.71.1 the inspector's verdict comes from `Decision.sell`; only the per-step narration is local. |
+| [WoWClearance_Process.lua](../WoWClearance_Process.lua) | The Process Bags engine: Disenchant / Lockpick / Convert, plus Mill / Prospect where the client has those spells (`processModeExists`; Forever does not). |
+| [WoWClearance_BagDisplay.lua](../WoWClearance_BagDisplay.lua) | Bag-slot sell-border tint + the sellinfo inspector, and every host bag UI adapter (`installHostBagBorderHook`). That includes the DaylightUI bag integration: borders, list groups, the merged Alt+Right-Click menu, and the lock / junk-mark / one-seller hooks. Since v2.71.1 the inspector's verdict comes from `Decision.sell`; only the per-step narration is local. |
 
 ### Event hub & comms
 
@@ -89,7 +90,9 @@ every call site.
 |------|------|
 | [WoWClearance_Minimap.lua](../WoWClearance_Minimap.lua) | Minimap button, launcher data object, and the addon compartment handler (`WoWClearance_OnAddonCompartmentClick`, named in the `.toc`). |
 | [WoWClearance_Tooltip.lua](../WoWClearance_Tooltip.lua) | Bag-item tooltip annotations. Since v2.71.2 it reads all state through `Decision.buildTooltipCtx` and its labels are guarded by `Decision.sell`'s verdict (equipped-honesty fix-up + sentinel line); only the per-branch label text is local. |
-| [WoWClearance_BagContextMenu.lua](../WoWClearance_BagContextMenu.lua) | Alt+Right-Click bag-item quick-action popup. |
+| [WoWClearance_BagContextMenu.lua](../WoWClearance_BagContextMenu.lua) | Alt+Right-Click bag-item quick-action popup. Stands down on a host bag UI whose own menu carries a row for it (`WC_compCache.hostOwnsItemMenu`). |
+| [WoWClearance_Window.lua](../WoWClearance_Window.lua) | The standalone settings window (sidebar + hosted panels), `NS.SkinWindow`, and the single launcher page in the game's Settings. Must load before any file that calls `NS.SkinWindow` at file scope. |
+| [WoWClearance_Daylight.lua](../WoWClearance_Daylight.lua) | Optional DaylightUI integration that is not about bags: its look on WC's windows, panels and item menu (`WoWClearanceDB.daylightLook`), a WC section in its options, `/dui wc`, a data text, and window movers. Loads last; does nothing without DaylightUI. |
 | [WoWClearance_BugReport.lua](../WoWClearance_BugReport.lua) | Diagnostic snapshot builder + display frame (`/wc bugreport`). |
 | [WoWClearance_HistoryWindow.lua](../WoWClearance_HistoryWindow.lua) | The interactive Sold History window (`/wc history`, v2.57.0): sell/delete log with All/Sold/Deleted filters + search, over `NS.recentSoldLog` / `NS.recentDeletedLog`. Since v0.6.0 those tables are saved per character (`DB.soldHistory`, loaded at login by `WC_compCache.loadSoldHistory`). |
 
@@ -120,7 +123,7 @@ anything that looks like dead code or a bug.
 - **Panel width only through `WC_compCache`** (PanelInfra), or it freezes at
   build-time width on resize.
 - **State transitions use `STATE.*` constants,** not raw strings.
-- **No third-party addon names** in new code, docs, or player-facing text.
+- **No third-party addon names** in new code, docs, or player-facing text. DaylightUI is the one deliberate exception (see CLAUDE.md).
 - **No em dashes (U+2014) anywhere.**
 
 ## Where do I make change X?
@@ -137,6 +140,8 @@ anything that looks like dead code or a bug.
 | React to a new game event | `RegisterEvent` + a branch in `Events.lua` (not a new frame) |
 | Add a `/wc` subcommand | the slash handler in `Events.lua` (and a row in `README.md`) |
 | Change a bag border or tooltip annotation | `BagDisplay.lua` / `Tooltip.lua` |
+| Support another bag UI, or change the DaylightUI bag integration | a `try...Host` adapter in `BagDisplay.lua`'s `installHostBagBorderHook` |
+| Change the DaylightUI look, options section, data text or movers | `Daylight.lua` |
 | Send an addon-to-addon message | `NS.Comms` in `Comms.lua` |
 | Add or align a row on a stats surface | `NS.MakeStatRow` in `PanelWidgets.lua`; the refresh body lives in `MainPanel.lua` (`NS.RefreshStats`) |
 

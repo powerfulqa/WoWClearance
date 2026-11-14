@@ -253,7 +253,7 @@ passthrough is now `WoWClearance_Locale.lua` (`NS.L` +
 `NS.RegisterLocale`), every player-facing string is wrapped at its
 call site as `L["English text"]`, and `WoWClearance_Locale_frFR.lua`
 / `_deDE.lua` ship as community-fill templates (empty values fall back
-to English). Design: `docs/specs/2026-06-16-localization-framework-design.md`.
+to English). Design: `EbonClearance's docs/specs/2026-06-16-localization-framework-design.md`.
 
 **Forever port:** the French / German templates, `/wc locale` and both
 locale suites were removed (this version is English only). `NS.L` is now a

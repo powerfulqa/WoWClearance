@@ -301,7 +301,7 @@ local PER_CHAR_FIELDS = {
     -- GetRealZoneText snapshot at the moment the best was set. All
     -- three are written atomically by the RefreshStats best-update
     -- gate (5-minute minimum session). See
-    -- docs/specs/2026-05-26-gph-stats-design.md.
+    -- EbonClearance's docs/specs/2026-05-26-gph-stats-design.md.
     bestGPH = true,
     bestGPHAt = true,
     bestGPHZone = true,
@@ -318,7 +318,7 @@ local PER_CHAR_FIELDS = {
     -- per-character so each character can independently choose which
     -- sections (troubleshooting / gates / labels) are expanded vs
     -- collapsed. Matches the processCollapsedModes precedent. See
-    -- docs/specs/2026-05-26-help-faq-panel-design.md.
+    -- EbonClearance's docs/specs/2026-05-26-help-faq-panel-design.md.
     helpSectionsCollapsed = true,
     -- v2.72.0 settings profiles: WHICH settings profile this character
     -- uses. The profile BODIES live at the top-level
@@ -1430,7 +1430,7 @@ local function EnsureDB()
             -- v2.37.0: Keep List verdict. Soft cool white, distinct from
             -- the warm-toned sell verdicts. Reads as "pristine /
             -- protected" - the visual-reassurance use case from
-            -- docs/specs/2026-05-28-keep-highlighting-design.md.
+            -- EbonClearance's docs/specs/2026-05-28-keep-highlighting-design.md.
             -- Default OFF: every existing category defaults ON, but
             -- Keep is opt-in so the player picks up no NEW slot colour
             -- on the v2.37.0 upgrade unless they explicitly enable it.
@@ -1496,7 +1496,7 @@ local function EnsureDB()
     -- Once seeded, the user's sub-toggle choices persist across master
     -- toggles. Only equipLoc-whitelisted gear shows text; consumables
     -- and quest items are skipped. Spec at
-    -- docs/specs/2026-05-28-keep-highlighting-design.md (Borrow C).
+    -- EbonClearance's docs/specs/2026-05-28-keep-highlighting-design.md (Borrow C).
     if type(DB.itemLevelOverlay) ~= "table" then
         DB.itemLevelOverlay = {}
     end
@@ -4694,7 +4694,7 @@ end
 -- v2.71.0 (decision-classifier Stage 1): WC_IsSellable is now a thin
 -- delegate over the pure decision core in WoWClearance_Decision.lua.
 -- The 500-line decision body moved there VERBATIM (see the spec at
--- docs/specs/2026-07-29-decision-classifier-design.md); this wrapper
+-- EbonClearance's docs/specs/2026-07-29-decision-classifier-design.md); this wrapper
 -- preserves the historical return contract
 -- (sellable, link, itemID, sellPrice, itemCount, quality) and the
 -- lastSellSignal scratch that BuildQueue reads. The trace and tooltip

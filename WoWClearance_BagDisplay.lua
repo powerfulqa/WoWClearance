@@ -139,7 +139,7 @@ function WC_compCache.bagSlotWillSellCategory(bag, slot)
     -- tagged entries; the "keep" tint is for MANUAL Keep List adds
     -- only - the visual-reassurance use case targets explicit user
     -- intent, not addon-driven auto-protections. See
-    -- docs/specs/2026-05-28-keep-highlighting-design.md.
+    -- EbonClearance's docs/specs/2026-05-28-keep-highlighting-design.md.
     if IsInSet(DB.blacklist, itemID) and not (DB.blacklistAuto and DB.blacklistAuto[itemID]) then
         return "keep"
     end
@@ -1011,7 +1011,7 @@ end
 -- only appears where iLvl is meaningful. Master toggle defaults OFF;
 -- when first enabled, bags seeds ON and the other two surfaces stay
 -- OFF until the player ticks them. See
--- docs/specs/2026-05-28-keep-highlighting-design.md (Borrow C).
+-- EbonClearance's docs/specs/2026-05-28-keep-highlighting-design.md (Borrow C).
 
 local WC_ITEM_LEVEL_EQUIP_LOCS = {
     INVTYPE_HEAD = true,

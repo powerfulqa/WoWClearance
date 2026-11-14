@@ -2,8 +2,7 @@
 
 WoWClearance's own release history. This project is a fork of
 EbonClearance ported from WoW 3.3.5a to WoW: Forever; EbonClearance's
-release history is preserved separately and unmodified in
-[`docs/CHANGELOG-EbonClearance.md`](docs/CHANGELOG-EbonClearance.md).
+release history is in [its own changelog](https://github.com/powerfulqa/EbonClearance/blob/master/CHANGELOG.md).
 Version numbers there belong to that project and do not continue into
 this one.
 

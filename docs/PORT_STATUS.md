@@ -2,6 +2,15 @@
 
 Living document. Update it as each work item lands.
 
+> **2026-11-14: public from v0.8.0.** The owner decided to publish. The
+> repository was published fresh, so the commit hashes quoted in this
+> file belong to the private port history and do not resolve here. File,
+> suite and count figures inside dated entries are as they were on that
+> date; the current ones are in [ARCHITECTURE.md](ARCHITECTURE.md) (36
+> `.lua` files, 10 test suites). `docs/INGAME_VERIFICATION.md`, the
+> in-game test protocol the entries below cite by phase and step, was the
+> owner's own checklist and is not in this repository.
+
 ## What Forever is
 
 WoW: Forever is the **retail (Mainline) client wearing a Classic version
@@ -1436,6 +1445,7 @@ evidence of absence.
 > per-character scope (this addon has none of its own), and a
 > corroborating independent addon on the same boundary (3.8 below asks for
 > both). Whether that is enough to publish is the owner's call.
+> **Decided 2026-11-14: published, from v0.8.0.**
 >
 > **LEAD 2026-10-07 (superseded by the measurement above): read-back
 > appears to WORK on build 70170, account scope.**

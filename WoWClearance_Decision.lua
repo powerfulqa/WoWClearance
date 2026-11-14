@@ -4,7 +4,7 @@
 -- License: see LICENSE; attribution preservation is required.
 --
 -- Stage 1 of the decision-classifier plan
--- (docs/specs/2026-07-29-decision-classifier-design.md; CODE_REVIEW audit
+-- (EbonClearance's docs/specs/2026-07-29-decision-classifier-design.md; CODE_REVIEW audit
 -- item 6 / competitive-review Tier A1). Two layers:
 --
 --   * NS.Decision.sell(ctx) - the PURE core. Reads ONLY the ctx table

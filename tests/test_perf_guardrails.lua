@@ -4453,7 +4453,7 @@ end
 -- correctly. Without this, the GPH record would be account-wide and
 -- every character would inherit the best from whichever character
 -- happened to set it last. See
--- docs/specs/2026-05-26-gph-stats-design.md for the design.
+-- EbonClearance's docs/specs/2026-05-26-gph-stats-design.md for the design.
 do
     local gphFields = { "bestGPH", "bestGPHAt", "bestGPHZone" }
     for _, name in ipairs(gphFields) do
@@ -5010,7 +5010,7 @@ end
 --
 -- The four sub-tests verify the four touch points stay in lockstep:
 -- defaults init, resolver order, panel row, Help entry. See
--- docs/specs/2026-05-28-keep-highlighting-design.md.
+-- EbonClearance's docs/specs/2026-05-28-keep-highlighting-design.md.
 do
     local evf = io.open("WoWClearance_Events.lua", "rb")
     local bdf = io.open("WoWClearance_BagDisplay.lua", "rb")
@@ -5081,7 +5081,7 @@ end
 --      tomeIsKnownCache from WoWClearance_Protection.lua.
 --   C. Item-level text overlay on equippable gear, gated by a master
 --      toggle + 3 surface sub-toggles (bags / paperdoll / merchant).
--- See docs/specs/2026-05-28-keep-highlighting-design.md.
+-- See EbonClearance's docs/specs/2026-05-28-keep-highlighting-design.md.
 do
     local protf = io.open("WoWClearance_Protection.lua", "rb")
     local evf2 = io.open("WoWClearance_Events.lua", "rb")

@@ -182,7 +182,7 @@ end
 -- session.copper / elapsed-seconds, with a 10-second floor on the elapsed
 -- value so sub-second extrapolation doesn't produce absurd numbers right
 -- after /reload. The best line shows the record + zone + when context.
--- See docs/specs/2026-05-26-gph-stats-design.md.
+-- See EbonClearance's docs/specs/2026-05-26-gph-stats-design.md.
 local function WC_RefreshGPHRows(panel, view, src, DB, ADB)
     local startedAt = NS.session.startedAt or 0
     local now = GetTime()
@@ -865,7 +865,7 @@ function NS.ResetLifetimeStats()
     end
     -- v2.35.x: Reset Lifetime wipes the GPH best record too.
     -- The user is opting in to a full lifetime reset; per the
-    -- spec (docs/specs/2026-05-26-gph-stats-design.md) the
+    -- spec (EbonClearance's docs/specs/2026-05-26-gph-stats-design.md) the
     -- best record is part of lifetime state and goes with it.
     DB.bestGPH = 0
     DB.bestGPHAt = 0
