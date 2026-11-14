@@ -7,8 +7,8 @@ What each file here is, and whether it describes the code as it is now.
 Keep these in step with the code.
 
 - [ARCHITECTURE.md](ARCHITECTURE.md): which file owns what, on one screen. Start here.
-- [ADDON_GUIDE.md](ADDON_GUIDE.md): the working rules and the traps. Sections marked "Removed in the port" and the "File split" stage log are history.
-- [PORT_STATUS.md](PORT_STATUS.md): what the port to WoW: Forever changed, what was measured in game, and the porting lessons. It is a dated log: older entries are not rewritten.
+- [ADDON_GUIDE.md](ADDON_GUIDE.md): the working rules and the traps.
+- [PORT_STATUS.md](PORT_STATUS.md): what the port to WoW: Forever changed, what was measured in game, and the porting lessons. Its work-item entries are dated and not rewritten.
 - [CODE_REVIEW.md](CODE_REVIEW.md): the backlog of known follow-ups. Items about the removed Project Ebonhold features are closed.
 
 ## History

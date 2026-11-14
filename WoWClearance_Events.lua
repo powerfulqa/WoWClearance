@@ -4686,7 +4686,7 @@ end
 -- Blacklist and IsEquippedItem are the only things that can veto a sale.
 -- WC-TRAP: do NOT combine isJunk / qualityPass / whitelistPass into
 -- "one cleaner check" - that breaks the grey-always-sold guarantee (see
--- ADDON_GUIDE "Grey items are always sold").
+-- ADDON_GUIDE "Grey items are sold by default").
 -- (Historical note: this trap once also forbade unifying WC_AnnotateTooltip
 -- with this logic. That was RETIRED in v2.71.2 - the tooltip now renders from
 -- the shared decision core, so the DECISION is unified; only the label

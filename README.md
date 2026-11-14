@@ -2,6 +2,7 @@
 
 [![Licence](https://img.shields.io/badge/Licence-Source--Available-blue?style=for-the-badge)](LICENSE)
 [![Client](https://img.shields.io/badge/WoW-Forever-orange?style=for-the-badge)](#requirements)
+[![Downloads](https://img.shields.io/github/downloads/powerfulqa/WoWClearance/total?style=for-the-badge&label=Downloads)](https://github.com/powerfulqa/WoWClearance/releases)
 
 **A bag manager for WoW: Forever.** It sells what you don't want when you visit a vendor, keeps what you do, and helps you delete or process the rest.
 

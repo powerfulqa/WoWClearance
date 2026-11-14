@@ -72,7 +72,7 @@ end
 -- saves keep the guarantee. An item a host bag UI marked as junk
 -- (ctx.hostMarkedJunk) also matches isJunk, at any quality. Do NOT combine the isJunk / qualityPass / whitelistPass
 -- passes into "one cleaner check" - that silently breaks the
--- grey-always-sold guarantee (ADDON_GUIDE "Grey items are always sold").
+-- grey-always-sold guarantee (ADDON_GUIDE "Grey items are sold by default").
 -- The runtime fixtures in tests/test_decision.lua pin this for the first
 -- time.
 function Decision.sell(ctx)
