@@ -1,0 +1,67 @@
+name: Test
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Install Lua 5.1
+        # Retry: the apt mirror occasionally returns exit 100 (a transient
+        # package-fetch failure) which has red-failed otherwise-green runs.
+        # Up to 3 attempts; the final lua5.1 -v asserts the install actually
+        # succeeded so a genuine failure still fails the step loudly.
+        run: |
+          for i in 1 2 3; do
+            sudo apt-get update && sudo apt-get install -y lua5.1 && break
+            echo "apt attempt $i failed; retrying in 5s..." && sleep 5
+          done
+          lua5.1 -v
+
+      - name: Install luacheck
+        # Same transient-apt retry pattern as the Lua install. luarocks pulls
+        # luacheck (+ argparse); the version query asserts the install worked
+        # so a genuine failure fails loudly rather than skipping the lint gate.
+        run: |
+          for i in 1 2 3; do
+            sudo apt-get update && sudo apt-get install -y luarocks && break
+            echo "apt attempt $i failed; retrying in 5s..." && sleep 5
+          done
+          sudo luarocks install luacheck
+          luacheck --version
+
+      - name: Lua syntax check
+        # v2.75.0: glob every shipped source file instead of a hand-maintained
+        # list (which had drifted, missing nine files including the decision
+        # core). Mirrors the luacheck step's `WoWClearance_*.lua` glob, so a
+        # new source file is syntax-checked automatically with no list to update.
+        run: |
+          for f in WoWClearance_*.lua; do
+            luac5.1 -p "$f"
+          done
+
+      - name: Luacheck lint gate
+        # Re-enabled once the ~162 (grown to 259) pre-existing warnings were
+        # reconciled: the WoW 3.3.5a API surface is declared in .luacheckrc
+        # read_globals, intentional globals are declared, idiomatic-noise
+        # categories (212/213/431/432/631) are ignored with rationale, and
+        # the real code issues (dead locals, dup locale keys, negated
+        # comparisons, dead assignments) were fixed. Must stay at 0 warnings;
+        # fix the cause or extend .luacheckrc (never blanket-silence).
+        run: luacheck WoWClearance_*.lua
+
+      - name: Invariant test suites
+        # Single entry point; tests/run_all.lua is the source of truth for
+        # the suite list. Add a new suite there and it runs here automatically.
+        run: lua5.1 tests/run_all.lua

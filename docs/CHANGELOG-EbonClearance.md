@@ -1,0 +1,3091 @@
+# EbonClearance - Changelog
+
+Detailed per-release notes for [EbonClearance](README.md). For the user-level overview of what the addon does, see the main [README](README.md). For prior-art acknowledgement and convergent-pattern history, see [NOTICE.md](NOTICE.md). For contributor-facing architecture and development discipline, see [docs/ADDON_GUIDE.md](docs/ADDON_GUIDE.md).
+
+---
+
+
+### v2.77.1
+
+**Fix: affix matching now recognises items whose suffix differs from the spell that grants the affix.**
+
+- Some affixes carry one name on the item and another in your spellbook - the long-documented example: items say "of Inner Light" while the extracted spell is called "Spirit Surge". The family matching added in v2.35.1 treated those as two different affixes, so the rank-known / rank-needed checks could miss a family you actually own and fall back to exact-text matching alone. A canonical name map now joins the known pairs: Inner Light / Spirit Surge, Precision / Cold, Swift Footwork / Feral Grace, Keen Strike / Keen Strikes, Block / Shield Block, Ironhide / Enduring Flesh.
+- The Inner Light pair has been confirmed live; the rest come from the community affix list and are pending in-game confirmation. A wrong pair errs toward keeping the item, but "Allow selling affixes you already have" also honours the map - if you run that option, spot-check one of these drops with `/ec sellinfo` after updating.
+- New test invariants execute the real name normaliser under plain Lua and pin that both name forms of every pair land on the same family key, and that the alias step stays the final step of normalisation.
+- Also recorded for a future Anvil session: eight community-list weapon families with no known carrier item yet, as `/ec paircheck` candidate notes (diagnostic comments only; nothing in the sell path reads them).
+
+No new settings, no schema change, downgrade-safe.
+
+### v2.77.0
+
+**`/ec paircheck` now suggests which affix a weapon's proc is - the thing that made Destiny hard to pair.**
+
+Pairing a chance-on-hit weapon to its affix used to mean reading a `/ec captureproc` dump by eye. The catch (Destiny taught us): a weapon's proc text ("Increases Strength") looks nothing like the affix's extraction description ("when you fall below 40% health..."), so comparing them never worked. So `/ec paircheck` now matches the weapon's PROC text against a small curated table of known weapon procs and tells you the likely affix.
+
+- **`/ec paircheck <itemID>`** reads any single weapon's proc line - even one you have never owned - and prints a suggestion like `Suggested affix: Resurgence (700097) ~100%`. Plain `/ec paircheck` still cross-checks the candidate list, now with a suggestion on each row.
+- **The suggestion is a guess to speed discovery, never a decision.** It is display-only: nothing in the sell path reads it, and you still confirm at the Anvil before a pairing is trusted. A proc-text guess can't be trusted to sell an item (two weapons can share a proc while only one is extractable), so the safety boundary is pinned by a test.
+- Under the hood EC now reads the server catalog's `weaponOnly` flag to resolve an affix family to its live spell id, instead of relying only on hardcoded ids.
+
+Also in this release: **confirmation popups that could open behind the Interface Options window are reachable again**, and the Quickstart's Project-Ebonhold-only questions were corrected.
+
+Engineering: a new runtime suite (`tests/test_proc_suggester.lua`, the 13th) proves the matcher identifies Destiny as Resurgence, and a static boundary test pins that the suggester can never reach the sell decision.
+
+---
+
+
+### v2.76.0
+
+**`/ec spike` now proves whose stutter it was.**
+
+The frame-hitch report kept only the 20 most recent hitches, so one big freeze was pushed out by twenty later small ones - usually exactly the frame a bug report needed. And although each line showed how many milliseconds EbonClearance spent in each phase, it never said what share of the frame that was. Now (the last engineering gap the competitive review flagged):
+
+- **The worst hitches of the session survive.** A second list keeps the 10 biggest frames, biggest first, evicted by severity - a 400 ms freeze stays visible no matter how many 51 ms blips follow it.
+- **Every line shows EbonClearance's share of the frame** - for example "EC 44 of 260 ms (17%)". A low share is the exoneration case: the stutter came from something else, and now the pasted report proves it. When the share rounds to 0%, the "busiest" label says "something else" instead of naming an EbonClearance phase (found in the field pass: "busiest: Tooltip scan - EC 0 of 613 ms (0%)" read as blame on a frame the addon barely touched).
+- `/ec spike` shows both lists (worst first, then most recent); `/ec bugreport` carries both sections. Session-only as before - clears on `/reload`, nothing is saved.
+- Locked by a new test invariant block (Test 134); French and German lines included.
+
+No new settings, no schema change, downgrade-safe.
+
+### v2.75.0
+
+**A full source audit found and fixed a way to lose an item, plus four more correctness bugs.**
+
+- **The affix-layout preview no longer turns off protection.** `/ec affixfallback on` previews how the settings look on a realm without the affix system. While it was on it also, invisibly, switched off chance-on-hit proc protection and let the addon sell at any merchant, so a vendor run with the preview active could sell a proc weapon you meant to keep. The preview is now purely cosmetic: it changes what the panels draw and nothing about what the addon does to your items. (Internally the UI-visibility check and the real "does this realm have affixes" check are now separate, and only the cosmetic one honours the preview.)
+- **The "Deleted outside EbonClearance" note no longer lies when you cancel.** Sold History records deletes made outside the addon so a missing item can always be traced. For a rare/epic/quest item it wrote that row the moment the confirmation popup appeared, so clicking Cancel left a permanent "deleted" row for an item still sitting in your bags. The row now waits until the item has actually left your bags.
+- **Enable / Disable is now genuinely per-character.** The checkbox, `/ec enable` / `/ec disable`, and the README always described it as per-character, but the flag was account-wide, so turning the addon off on one alt turned it off everywhere. It is now per-character as documented. Existing setups carry over: if you had the addon disabled account-wide, it stays disabled per character (it is never silently switched back on).
+- **Saving a settings profile over an existing one now asks first.** Delete already confirmed; Save used to overwrite a same-name profile silently.
+- **Two smaller robustness fixes:** a settings-profile field added in a future update now falls back to its proper default on an older profile instead of coming back blank, and the decision core no longer reads an item's affix data when every affix rule is switched off.
+- **Dragging the Sold History / Loot Log windows is smooth again.** During a live farming session both windows rebuild their rows about once a second as items are sold, deleted, and looted; that rebuild was firing mid-drag and hitching the move. Both now pause the rebuild while you are dragging and refresh once when you let go.
+- **More chance-on-hit weapons are recognised.** Destiny is now paired to the **Resurgence** affix - Anvil-confirmed, because owning Resurgence (which only Destiny grants) is exactly why the Anvil refuses to re-extract it, even though its proc text gives no hint. Five more weapons from the community affix list are recognised too (Stalvan's Reaper, Gut Ripper, Ravager, Chillpike, Thunderfury), corroborated by the list plus each weapon's real proc line. Two new diagnostics help build and check these: **`/ec paircheck`** reads a candidate weapon's proc line even for items you have never owned, and **`/ec pairaudit`** checks every recorded pairing's itemID against your client to catch a typo.
+
+Engineering: the three-tier settings storage gained a behavioural round-trip test (the twelfth suite), the CI syntax check now globs every source file instead of a hand-maintained list that had drifted (it was missing nine files, including the decision core), and the decision-classifier follow-up is marked resolved in the code-review log.
+
+---
+
+
+### v2.74.0
+
+**Affix settings now hide themselves on a realm that has no affix system.**
+
+EbonClearance runs fine on a plain 3.3.5a server, but it still showed a dozen affix and proc-extraction toggles that could never do anything there, plus a red "Project Ebonhold addon not detected" note under one of them. Those options are now left out entirely rather than shown greyed, across every surface that carried them: Keep Settings (affix protection, the dupe toggle, the rank slider and both BoE companions, the iLvl auto-mark shield, and "Sell known chance-on-hit procs"), Delete Settings (the unsellable-affix auto-mark), Item Highlighting (the Known Affix and Needed Affix tints), the Guild panel (chance-on-hit knowledge sharing), the two affix questions in Quickstart, the affix diagnostics in the slash-command reference, and the matching Help entries.
+
+- **Detection is broader than "is the PE addon loaded".** The check is a new `EC_compCache.peFeaturesVisible()` that ORs three live signals: the PE addon global, the extraction catalog, and any engraving spell found by the spellbook walk. That last one matters - affix protection is sourced from your spellbook, which is server-side truth, so a player on Project Ebonhold who does not run the PE addon still has working affix protection. Gating on the addon global alone would have hidden live features from them. The result latches for the session, because the spellbook walk finishes after the first panel opens.
+- **Nothing about selling, keeping or deleting changed.** This release only decides what is drawn. The hidden settings were already inert on a realm without affixes: every affix branch in the decision core short-circuits when no affix is parsed off the item.
+- **"Keep items with chance-on-hit procs" deliberately stays.** Its detection is a plain `Chance on hit:` tooltip scan, so it protects real weapons on any server, and Alt+Right-Click to Allow Sell remains the per-item escape. The help for that escape stays visible too.
+- **Chance-on-hit protection goes with them, and so does the behaviour.** "Keep items with chance-on-hit procs" means "keep it until you extract the proc", which has no reading where extraction does not exist. Off an affix realm the toggle is hidden AND the protection is inert. Hiding it alone would have been worse than leaving it: it defaults on, nothing could ever release a proc weapon, so every one of them would have been wedged in your bags with the off-switch invisible.
+- **"Sell at" loses the Goblin Merchant choice.** Two of its three options exist only to include or exclude the companion, so the row is hidden and every merchant is allowed. A stored "goblin" no longer strands the vendor cycle selling nothing - `EC_IsMerchantAllowed` applies the same gate. Your stored choice is left untouched for realms that do have the pet.
+- **The Scavenger panel goes dark**, since every control on it drives the companion pets. Before it did, **auto-open lootable containers** and **Fast Loot** moved to the Process Bags panel: neither has anything to do with the pets, both are stock 3.3.5a looting, and leaving them there would have taken them down with the panel. They move on every realm, so there is one home rather than two.
+- **The Help panel follows the settings.** Roughly a quarter of the FAQ documented options that are no longer on screen, so those entries are filtered out too, along with the whole companion section (its header goes with it rather than standing over nothing). A new Troubleshooting entry explains where the affix settings went, and it is deliberately never filtered - the players who need that answer are exactly the ones the filter applies to. 106 of 143 entries remain on a realm without the affix system.
+- **Help is easier to read.** Answers now have line leading, a clearer gap between question and answer, and more space between entries. The eleven longest answers gained paragraph breaks. Nothing was cut - this is typography, not trimming. The French and German answers keep their existing wording and pick up the spacing; paragraph breaks in those two are a translator pass for later.
+- **The Process Bags intro is about a third shorter**, which gives the item list back the space it was eating. Both lines keep their actionable content: the click verbs, what Clear Ignored is for, and how to make a Keep-List item processable.
+- **Preview it yourself.** `/ec affixfallback on` followed by `/reload` now shows the non-PE layout on a PE client, so the change is verifiable without a second realm. `/ec affixfallback off` plus `/reload` restores it.
+- **Heartrazor (29962) added to the non-extractable list.** Anvil-verified on 2026-08-01, found via `/ec sellinfo` on a "Heartrazor of Iron Will III" whose affix was already owned: the affix rule was happy to release it and chance-on-hit protection was the only thing still holding it, for a proc that cannot be learned from that item at all.
+- Locked by six new invariants in the affix-resilience suite, including one that fails the build if a new PE-bearing panel forgets the gate, one that fails if the two looting toggles are ever moved back onto the companion panel, and one that fails if the Help filter stops handling whole sections. French and German entries included.
+
+### v2.73.3
+
+**Documentation catch-up: the README and in-game Help now match the addon.**
+
+- README gains the five diagnostic commands it was missing (`/ec affixdump`, `/ec affixfind`, `/ec procdump`, `/ec realmtest`, `/ec servertest`), the Target Goblin Merchant key binding, and mentions of Turbo Mode and auto-repair (with the guild-bank funding option); the Process Bags bullet now says which of its settings are per-character vs shared.
+- The in-game Help entry for Import/Export no longer overclaims: the "Full settings pack" exports your per-rarity merchant rules plus all four lists - not "everything". For carrying full selling behaviour between characters, it now points at Settings Profiles. French and German answers updated to match.
+
+### v2.73.2
+
+**Fix: no more false "Will Delete (unsellable affix)" on bind-on-equip dupes.**
+
+The auto-mark scan only trashes soulbound unsellable affix dupes - a BoE dupe is auctionable, so it's deliberately spared. But the tooltip preview and the `/ec sellinfo` tips didn't check the bind, so a BoE dupe (reported: Cuffs of the Shadow Ascendant of Fortified by Pain II) showed "Will Delete (unsellable affix)" and "will be marked on the next bag update" while sitting through every scan untouched. Both surfaces now apply the scan's bind gate: the tooltip shows the truthful "Won't Sell (no value)", and the trace explains that auto-mark only trashes soulbound items and suggests auctioning or deleting by hand. Locked by a new invariant (Test 118e); French and German lines included.
+
+### v2.73.1
+
+**Chance-on-hit coverage pass: four new proc pairings and three new never-extractable weapons, all Anvil-verified.**
+
+- **Now recognised as "proc known"** (so spare copies auto-sell with "Sell known chance-on-hit procs" on): Darkwater Talwar (Affliction), Taran Icebreaker (Pyromancy), Hammer of the Northern Wind (Glaciation), Bashguuder (Rending). Each is a proc-text match against the engraving spellbook AND registered "already known" at the Anvil.
+- **Now recognised as never-extractable** (so they skip the chance-on-hit keep rule entirely and follow your normal sell rules, like Brain Hacker already does): Fiery War Axe, Fang of the Crystal Spider, Darkspear (Purple Glow). Fiery War Axe is the instructive one - its proc text is word-for-word the same family as Taran Icebreaker, which IS extractable; the server registers extraction per item, so only the Anvil settles it.
+- Destiny and Windreaper are extractable and already known at the Anvil, but their pairing needs the affix name the Anvil displays - they stay safely protected until that's captured.
+
+### v2.73.0
+
+**Sold History now records deletes that happened outside EbonClearance, so a missing item can always be traced.**
+
+When you drag-delete an item yourself, or another addon destroys one, the deleted-history log used to stay silent - and if the item mattered, the addon had no way to prove it wasn't the one that removed it. Now (adopted from the competitive review, the last Tier A item):
+
+- **Any cursor delete EbonClearance didn't perform lands in Sold History** with the label "Deleted outside EbonClearance - by you or another addon", newest-first like everything else, searchable, and visible in `/ec bugreport`'s Recent Deleted section with an `(external)` tag.
+- **These rows never touch your statistics** - they're not EbonClearance actions; the row exists to prove that.
+- EbonClearance recognises its own deletes (including popup-less grey deletes) and never double-logs them.
+- Built with the addon's standard non-invasive hooks - no game functions are replaced. French and German lines included. No new settings.
+
+### v2.72.1
+
+**Fix: the vendor summary no longer counts deletions as sales.**
+
+A merchant visit that only executed Delete List items announced "Sold 7 items... Money Collected: 0g 0s 0c" (reported with Winterfall Firewater at a normal vendor). The run summary now counts sells and deletes separately: "Sold 3 and deleted 7 items", or "Deleted 7 Delete List items. Nothing sold." when nothing sold. French and German lines included. No behaviour change - the same items sold and deleted before and after; only the chat line was lying.
+
+### v2.72.0
+
+**Per-character settings: each character now picks a Settings Profile for its selling behaviour.**
+
+Until now, every behaviour setting - merchant mode, rarity rules, protections, affix and recipe settings, deletion toggles, vendor speed - was silently shared by every character on the account: flip a toggle on one alt and all of them changed. Now:
+
+- **Settings Profiles** (new panel under Profiles, and `/ec sprofile`): a named profile holds a character's selling behaviour. Each character picks one. Characters on the same profile share it live - change a setting on one and every character using that profile follows. To give one character its own rules, save a new profile there and press **Use**.
+- **Nothing changes on upgrade**: your current settings become the "Default" profile and every character starts on it - identical behaviour to yesterday until you deliberately fork a profile.
+- Item lists, stats, looting/scavenger behaviour, and visual options are deliberately NOT in a settings profile - lists stay per-character as before, the rest stays account-wide.
+- Deleting a profile moves its users back to Default; Default itself can't be deleted or renamed. Renames follow every character that uses the profile.
+- Under the hood this is the same proven partition the per-character lists use (a third proxy route), so every panel, the decision core, and the vendor engine read the new storage with zero call-site changes. New test invariants (Test 130a-f) lock the schema, migration ordering, and management functions; French and German translations included.
+- **The existing Profiles panel is now called "List Profiles"** so the pair reads naturally: List Profiles hold your Sell + Keep lists, Settings Profiles hold your selling behaviour. Same panel, same slash commands, nothing else changed.
+- **Fixed: the profile Delete/Clear confirmation popups could open underneath the settings window.** They now always appear on top.
+
+Schema addition is additive and downgrade-safe: older versions read the frozen pre-migration values.
+
+### v2.71.3
+
+**Delete decisions now come from the same core as sell decisions (classifier Stage 4, the final stage), making every surface honest about rescued items.**
+
+- **The Delete-List destruction gate lives in the decision core.** The per-slot eligibility check (with its v2.50.2 rescue vetoes: Keep List, Account Sell List, currently worn, protected affix) is now a pure, runtime-tested function; the engine's gate delegates to it, and bag scans keep their fast path for unlisted slots.
+- **`/ec sellinfo` and the tooltip no longer promise deletes that won't happen.** Both used to say WILL DELETE for any Delete-List item; now they consult the real gate, so a listed item that a rescue protects shows what actually happens instead - the trace names the exact rescue ("on Delete List but currently worn - not deleted"), and the tooltip falls through to the item's real verdict.
+- **The tooltip's built-in label check now covers delete labels too** (the auto-mark "Will Delete (unsellable affix)" preview stays excluded - it predicts a future marking, which is a different question).
+- **Fixed a tooltip lie found during verification** (thanks to the report on Precious's Putrid Collar of Bulwark VI): for a Delete-List item carrying an affix you own whose item level sits above your sell cap, the tooltip overwrote "Will Delete" with "Keep (affix rank known)" while the vendor cycle deleted it anyway. Delete-Listed tomes had the same hole ("Keep (learned tome)"). Both blocks now leave a Will Delete verdict alone, like the Keep List guard always has.
+- 12 new runtime fixtures pin the delete gate (including the deliberate asymmetry that the Account Sell List rescues a listed item but the character Sell List does not), new test invariants (Test 129) lock the delegation and label wiring, and the old three-way "edit all three mirrors together" trap markers are retired - the classifier plan is complete.
+- French and German entries included for the new trace reasons.
+
+No new settings, no schema change, downgrade-safe.
+
+### v2.71.2
+
+**The tooltip verdict now answers to the same decision core as the vendor and `/ec sellinfo` (classifier Stage 3), plus an honesty fix for worn items.**
+
+- **Tooltip labels are checked against the engine.** The bag-item tooltip used to re-derive the whole sell decision in parallel (the last surface still doing so). Now every check reads from one shared state snapshot - a new live-tooltip adapter serves hovers and chat-linked items, which have no bag slot - and a built-in sentinel adds a small grey "(EC label check failed - please report via /ec bugreport)" line if a label ever contradicts the engine's verdict for the same item.
+- **Fixed: labels could promise a sale of something you're wearing.** Only the Sell List label checked whether the item was equipped; a worn piece of gear that matched a rarity rule could show "Will Sell" on its paper-doll tooltip even though the vendor cycle always refuses equipped items. Every "Will Sell" label now flips to "Won't Sell (equipped)" for worn items.
+- Both decision-core adapters (vendor/trace and tooltip) now fill their shared state through one helper, so they cannot drift apart. New test invariants (Test 128) lock the adapter routing, the sentinel, and the equipped guard.
+- French and German entries included for the new sentinel line.
+
+No new settings, no schema change, downgrade-safe.
+
+### v2.71.1
+
+**`/ec sellinfo` now takes its verdict from the same decision core the vendor uses (classifier Stage 2), fixing one real disagreement found on the way.**
+
+- **The trace's WILL SELL / WON'T SELL verdict is now the engine's own answer.** Previously the Sell Info popup re-derived the whole decision in parallel and could drift from what the vendor actually did (it has, twice). Now every check reads from the same state snapshot the vendor uses and the final verdict comes straight from the decision core; the per-step explanation lines are still written per branch, and a built-in sentinel adds a visible "this explanation disagrees with the engine - please report it" line if a narration branch ever falls behind.
+- **Fixed a live disagreement found during the conversion:** for an item carrying an unranked affix you already own (with "Allow selling affixes you already have" on), the trace said "won't sell - protected" while the vendor correctly sold it. The trace's protection step was missing the family-name ownership fallback the engine and tooltip have had since v2.45.0.
+- **Small label improvement:** items kept by chance-on-hit protection now summarise as "won't sell - protected" instead of "won't sell - no rule matched", matching the tooltip's Keep label and the step text.
+- New test invariants (Test 127) lock the verdict-from-core wiring, the drift sentinel, and the fixed ownership chain. French and German entries included for the new sentinel line.
+
+No new settings, no schema change, downgrade-safe.
+
+### v2.71.0
+
+**Internal: the sell/keep decision now lives in one testable core. No behaviour change.**
+
+Every "should this item sell?" question used to be answered by a 500-line function inside the event hub, with the tooltip and `/ec sellinfo` trace each hand-copying its logic. This release extracts the decision into a new file, `EbonClearance_Decision.lua` (Stage 1 of the decision-classifier plan from the competitive review):
+
+- **`NS.Decision.sell(ctx)` is a pure function** - it reads only a plain context table, no game API calls - and returns a verdict (`sell` / `keep` / `none`) plus a reason token (`junk`, `quality`, `whitelist_char`, `affixrank`, `tomeProtected`, `chanceonhit`, ...). The vendor engine's `EC_IsSellable` is now a thin delegate that builds the context and translates the answer back; every caller and every decision is unchanged.
+- **The sell logic finally has runtime tests.** Because the core runs under plain Lua, the new `tests/test_decision.lua` suite (the 11th) exercises it directly with fixture items: every reason token, the grey-always-sold guarantee, the merchant-mode and sell-price gates on every signal, and regression fixtures for the past field incidents (the v2.57.2 iLvl-ceiling near item-loss, the Mooncloth Sell-List-vs-tome case, the Nightfall known-proc case, the v2.60.0 non-weapon proc rule). Previously all sell-logic tests were pattern matches against the source text; now the behaviour itself is executed on every push.
+- Scan cost is unchanged: the expensive tooltip-backed checks ride as lazy callbacks and only run on the branches that need them, exactly as before.
+- Next stages (separate releases): the `/ec sellinfo` trace and the tooltip render from the core's reason tokens instead of hand-mirroring the logic.
+
+No new settings, no schema change, downgrade-safe.
+
+### v2.70.0
+
+**Safety: rule changes now take effect mid-run. The vendor worker re-checks every item against your current settings right before selling or deleting it.**
+
+Previously the sell/delete queue was decided when the merchant cycle started; if you unticked a rule or added a Keep List entry while the worker was mid-burst (Turbo runs up to 80 actions), the queued action still executed against the old settings. Now (pattern proven by a sibling addon in the ecosystem, adopted from the competitive review):
+
+- **Every queued sell re-runs the full sell decision** immediately before the vendor call, with the run's merchant-mode context. If it no longer matches a rule, the item is kept.
+- **Every queued delete re-runs the full live protection gate** (Keep/Sell lists, equipped, affix protection, quest) immediately before the delete.
+- **Saved items are visible, not silent:** a gold "Kept" chat line fires immediately (you just changed a rule - the line confirms it took effect in time), the Sold History window shows Kept rows with the reason under the All filter, and `/ec bugreport` gains a "Recent Saved (rules changed mid-run)" section.
+- A skipped item never counts as a vendor refusal, so the anti-wedge machinery is unaffected. Locked by a new test invariant (Test 126).
+
+French and German translations for the new lines included. No new settings, no schema change, downgrade-safe.
+
+### v2.69.0
+
+**Bind filters now work on French and German clients, one shared item scan instead of three, and the third-audit performance batch.**
+
+## Localized bind detection + combined item scan
+
+- **Bind filters were silently broken on non-English clients.** The "Sell BoE only" / "BoP only" rules matched the English tooltip lines ("Binds when picked up", "Soulbound", "Binds when equipped") literally, so on the French and German clients we ship translations for, every bind filter quietly treated all items as "any". Detection now uses the game's own localized strings and works in every client language. (From the competitive review; the sibling addon demonstrated the correct pattern.)
+- **One item scan instead of three.** Checking an item's bind type, chance-on-hit proc, and Resilience each ran a separate hidden-tooltip inspection on first sight. One combined pass now fills all three answers together, and none of them can cache a wrong answer from an item whose data hasn't loaded yet (that guard previously protected proc/Resilience but not bind). Locked by a new test invariant (Test 125).
+- Known limit, documented: the Resilience and proc-text matchers themselves remain English patterns - a separate, much larger question than the bind fix.
+
+## Also in this release: the third-audit performance batch
+
+**Typing in the search boxes no longer re-filters per keystroke, plus a batch of engine cleanups. No behaviour change.**
+
+- **Search boxes wait for you to stop typing.** The Loot Log and Sold History searches re-ran their full rebuild on every keystroke - on the Loot Log's Account scope that's the thousands-of-items sweep, nine times for a nine-letter word. Both now refresh once, a quarter-second after you pause, using the same debounce the list panels have had since v2.28.0 (now a shared helper, locked by a new test).
+- **Stats panel stops repainting when nothing changed.** While open it rewrote every row and re-anchored every section once per second; now it does that only when a stat actually changed, and just keeps the live Gold/Hour line ticking in between.
+- **Marathon-session logs are true ring buffers.** At the 5,000-entry cap, every sale/delete used to shift the entire log down by one - a real cost during exactly the long farms that fill it. The logs now overwrite the oldest slot in place; the Sold History window and `/ec bugreport` read them in exact order regardless (locked by a new test).
+- **Tooltip-scan plumbing:** the hidden scan-tooltip's line lookups are memoised (they rebuilt a global-name string per line, per scan, ~1,000+ throwaway strings per cold bag walk); rarity filtering in Sold History remembers each entry's rarity instead of re-asking the client per refresh; the loot tally reuses its scratch tables instead of reallocating per burst; Protection/Tooltip gained the standard cached-API blocks their sibling files already had.
+- **Test-coverage fix (contributor-facing):** the three static test suites had silently drifted behind the `.toc` - up to nine shipped files were never scanned by the comment-hygiene and invariant checks. Their file lists now derive from the `.toc` itself, so they can never drift again (verified by deliberately planting a violation in a previously-unscanned file and watching the gate catch it).
+- **Cleanups:** removed the unreachable "Nothing processed yet" row on the Stats panel (all four process rows always render since v2.66.1), fixed a corrupted first byte pair in docs/ADDON_GUIDE.md, and hoisted a per-call closure out of the character-allowlist check.
+
+No new settings, no schema change, downgrade-safe.
+
+### v2.68.0
+
+**The Loot Log no longer slows the game down + rarity and search filters on both pop-out windows.**
+
+## Account scope was degrading the whole client
+
+Reported by Serv: opening the Loot Log with the Account view selected made the entire game stutter, not just the window, and scrolling made it worst.
+
+The cause was one line of design: the refresh created a frame for every entry. With 5000+ items that is 5000 frames, each holding an icon texture and two FontStrings, so roughly 20,000 live UI objects. WoW's layout cost scales with live frame count across the whole interface, which is why the damage was global rather than confined to the list.
+
+**The list is now virtualised.** The row pool holds only what fits the viewport plus two (around 20 rows) and re-binds those same frames to a different slice of the list as you scroll. Frame count is constant no matter how long the list is, so Account now costs the same as Session. Nothing is hidden or truncated: the scroll range still spans the full list.
+
+**The safety refresh was also doing far too much.** It rebuilt everything every 2 seconds, forever - walking every item in the scope calling `GetItemInfo` and re-sorting, whether or not anything had changed. It now holds that fast cadence only while item names are still being resolved, then drops to 15 seconds. New loot still appears immediately.
+
+## Account view showed "item:3669" instead of names
+
+The Account view aggregates loot from every character, so it lists items the current character has never seen. Those are missing from the client's item cache, so they rendered as a raw ID with a "?" icon. Less visibly they also counted as 0 gold and were skipped by the rarity filter, because their price and quality were unknown too.
+
+Those rows now request their item data and fill in on their own within a few seconds, with the gold total climbing as they resolve. The requests are capped per refresh and per item so a handful that never resolve cannot retry forever.
+
+## New filters
+
+- **Rarity filter on Sold History**, the same control the Loot Log has. Combines with the All / Sold / Deleted buttons and the search box.
+- **Search box on the Loot Log**, matching the one Sold History already had. Type any part of an item name.
+- **Filters now rebase the totals.** Narrow to Epics and each row shows its share of your Epics, with the visible rows adding up to 100%. Previously every share was measured against everything you had ever looted, so a filtered view showed a handful of tiny percentages. The header counts rebase the same way, so the whole window describes one thing.
+- **Percentages show two decimals.** With thousands of distinct drops every share sits under about 1.5%, so at one decimal long runs of rows all read "0.8%" and the column ranked nothing.
+- **Numbers are comma-grouped** throughout the Loot Log, so "355869 looted" reads as "355,869 looted".
+
+## Two z-order fixes
+
+Both were fallout from raising these windows above the Interface Options frame in the v2.67.0 cycle:
+
+- The Loot Log's rarity dropdown opened **behind** the window, so clicking it appeared to do nothing.
+- Hovering a row put the tooltip **behind** the window, so half of it was unreadable. The same bug was latent on both of Sold History's hover paths, including the one that shows the full untruncated row text.
+
+Both are fixed through shared helpers, so any future pop-out inherits them instead of rediscovering the problem.
+
+## Chance-on-hit
+
+- Blade of Unquenched Thirst (31193) pairs to **Vampirism**, confirmed by extraction. Second weapon in that family alongside Glaive of the Pit.
+
+## Docs
+
+In-game Help entries for both windows, README, and `docs/ARCHITECTURE.md` updated for the new filters and shared helpers. French and German translations updated rather than left to fall back to English.
+
+
+### v2.67.0
+
+**Stats read like a spreadsheet + the available update stays on screen + quality names replace colour words + eleven new chance-on-hit pairings.**
+
+## Stats - Personal is aligned and gold-only
+
+Serv's report: the stats screen was hard to scan. Values started at whatever X the label happened to end at, so nothing lined up, and every gold figure carried silver and copper that pushed the numbers around.
+
+- **Gold-only display.** Aggregate gold values render as whole gold. New `NS.CopperToGoldOnlyText` helper sits alongside the existing `NS.CopperToColoredText`, which still handles every surface that wants full precision.
+- **Fixed value columns everywhere.** Every section moved onto the shared `NS.MakeStatRow` two-column rig (`row.left` label, `row.right` value at a fixed X). That covers the aggregate rows, Sold by Quality, Deleted by Quality, both Top 5 lists, Top Zones, and Process Bags Totals. Numbers now stack in a column down the panel.
+- **Sold by Quality gets a third column** for its gold value, at its own fixed X so the "Xg" figures stack against each other as well as against the counts.
+- **Top 5 counts are white,** not gold. They are item counts, and rendering them in the gold colour read as money.
+
+## Stats gaps closed
+
+Sections are built with a fixed row count (8 quality buckets, 5 top-5 slots) and unused rows are hidden. A hidden row still occupies its 14px slot in the anchor chain, so a partially-filled section left a hole above the next header - up to about 42px between "Sold by Quality" and "Deleted by Quality".
+
+Fixed by re-anchoring at refresh time: each section header now attaches to the **last visible row** of the section above it rather than to a fixed row index. Padding lands at a natural 10px regardless of how many buckets have data.
+
+Process Bags Totals takes the simpler route and always renders all four operations, greying out any with a count of zero. No hidden middle row, so no hole where Milling would sit when you have not milled anything.
+
+## The available update stays on the panel
+
+Previously the newest version heard from another player was announced once in chat at login and then gone. Miss that line and there was no way to see it again.
+
+`NS.Comms` now tracks the highest version it has heard on the addon channel and exposes it as `Comms.GetLatestPeerVersion()`. The main panel shows it on its own line under the **Tell me when an update is available** toggle, appearing only when an update actually exists. Widgets below the toggle re-anchor dynamically, so they stay in the checkbox column whether or not the notice is showing.
+
+## Quality names instead of colour words
+
+The Merchant panel referred to rarities as White / Green / Blue / Purple. Those are the tooltip colours, not the game's names for them, and a new player reading "Purple" has to translate it. Now reads **Common / Uncommon / Rare / Epic** throughout, including the recipe-quality row. README updated to match.
+
+## Alignment pass
+
+- **Merchant** and **Scavenger** panels: `[?]` help icons aligned, following the Keep Settings pattern the panels already had right.
+- **Item Highlighting**: the Change colour buttons align in a column, positioned off the widest label rather than each following its own label.
+- `NS.AddCheckbox` label inset raised so a `[?]` anchored past the label clears the scrollbar zone.
+
+## Chance-on-hit pairings
+
+Eleven pairings added across this cycle from `/ec captureproc` dumps plus Anvil verification:
+
+- Bite of Serra'kis (6904) and Venomspitter (13183) -> **Venom**
+- Vibroblade (9485) -> **Rending**
+- Supercharger Battle Axe (9486) -> **Wilds**
+- Searing Blade (12992) and Burning War Axe (2299) -> **Pyromancy**
+- Sword of Corruption (13032) -> **Decay**
+- Claw of the Shadowmancer (2912) and The Black Knight (12974) -> **Affliction**
+- Shell Launcher Shotgun (13146) -> **Fire Blast**
+- Blade of Unquenched Thirst (31193) -> **Vampirism**, second item in that family alongside Glaive of the Pit. Its proc is vanilla Drain Life, and Vampirism is the only life-steal affix in the 700xxx weapon family.
+
+Three items Anvil-verified as **not** extractable and added to the never-extractable set: Blazing Rapier (12777), Sword of Decay (1727), Toxic Revenger (9453). Items in that set now bypass chance-on-hit protection entirely, since there is nothing to protect.
+
+## Fixes
+
+- Loot Log and Sold History pop-outs now sit above Interface Options. Both shared `FULLSCREEN_DIALOG` strata with the Options container, and WoW's z-order tiebreaker gives priority to whichever was shown most recently. Both moved to `TOOLTIP` strata, the same trick the Quickstart panel already uses.
+
+## Docs
+
+In-game Help FAQ, README, and `docs/ARCHITECTURE.md` all updated for the version notice, quality wording, and `NS.MakeStatRow`. Locale templates carry translated entries for the changed Help answer.
+
+
+### v2.66.0
+
+**Keep BoE affixes below rank floor for auction + BoE-toggle rename pass + shorter labels + panel reorder + red "PE not detected" warning + specific BoE tooltip labels.**
+
+## New toggle: Keep BoE affixes below rank floor
+
+Requested by Valentine on Discord: the `Sell affixes below rank N` slider was selling their BoE items even when they wanted to list those on the auction house. The existing `Keep bind-on-equip ones` toggle only gated the owned-dupe sell rule, not the rank-floor sell rule.
+
+New Keep Settings toggle **`Keep BoE affixes below rank floor`** (default OFF, opt-in). Companion to the rank slider; parallel to the existing BoE-keep for the dupe rule. When on, BoE items with rank below the floor are kept for auction; soulbound items in the same band still sell (a vendor is their only exit). New DB field `keepBoeBelowRankFloor` (boolean). Added to `EC_TOGGLE_WATCH_LIST` and `/ec bugreport`.
+
+The gate is applied at three sites (three-way mirror contract): `EC_IsSellable` in [EbonClearance_Events.lua](EbonClearance_Events.lua), `describeSellability` in [EbonClearance_BagDisplay.lua](EbonClearance_BagDisplay.lua), and `EC_AnnotateTooltip` in [EbonClearance_Tooltip.lua](EbonClearance_Tooltip.lua). All three name the specific rule that suppressed the release so the trace / tooltip / bug report agree with what the vendor cycle actually does.
+
+## Toggle-label rename pass (Serv feedback)
+
+- `Keep bind-on-equip ones (auction them yourself)` -> **`Keep BoE affixes you already have`**
+- `Keep BoE items below rank floor (auction them yourself)` -> **`Keep BoE affixes below rank floor`**
+- `Protect high-iLvl items from unsellable-affix auto-mark (iLvl >= 200)` -> **`Protect iLvl 200+ items from auto-mark`** (66 chars -> 39 chars, fits on one line at default panel width)
+
+BoE terminology is consistent across both toggles now (was "bind-on-equip" on one, "BoE" on the other). Parenthetical "(auction them yourself)" dropped from both. Parallel construction with the parent rule's own words ("affixes you already have" mirrors "Allow selling affixes you already have"; "below rank floor" mirrors "Sell affixes below rank N").
+
+Old locale keys stay as orphans; new keys added to `_deDE.lua` + `_frFR.lua` as empty templates.
+
+## Panel layout reorder
+
+The two BoE-keep toggles used to both sit after the rank slider, which visually disconnected the dupe-BoE toggle from its parent rule (`Allow selling affixes you already have`). Reordered so each BoE-keep sits directly under the rule it applies to:
+
+```
+Keep blue/purple items with affixes
+  Allow selling affixes you already have
+    Keep BoE affixes you already have         <- moved here
+  Sell affixes below rank N (slider)
+    Keep BoE affixes below rank floor
+  Protect iLvl 200+ items from auto-mark
+```
+
+`rankSlider` re-anchors to `keepBoeCB`, `protectHiILvlCB` re-anchors to `keepBoeRankCB`, downstream chance-on-hit + tome sections chain-follow from `protectHiILvlCB`. `keepBoeRankCB` gets an enabled/disabled state that follows the rank slider (greyed when the slider is 0 or when PE is not detected), and `UpdateDupeAffixEnabled` re-fires when the slider value changes so the sub-toggle greys / lights up in real time.
+
+## "Project Ebonhold addon not detected" warning is now red
+
+The dupeAffixNote status line ("Project Ebonhold addon not detected. This option needs PE to know which affixes you have.") was rendering in grey (`|cff888888`), same colour as regular explanatory notes. That made it read as neutral prose when it's actually a warning about a missing dependency. Swapped to red (`|cffff4040`) so it registers as "attention needed".
+
+## Specific BoE-keep tooltip labels (Serv report)
+
+The tooltip on the Viking Warhammer of Iron Will I read `Keep (affix rank known)` when the actual reason it stayed in bags was the BoE-below-rank-floor toggle. Misleading - "affix rank known" implies "kept because you already own this affix" when the truth was "kept because it's BoE and I'd otherwise sell it via the rank floor rule."
+
+Fix: track which BoE-keep gate suppressed a would-have-been release (`keptByBoeDupes` / `keptByBoeBelowRank`) and route to a specific label in the "Keep" branch of the affix protection block. Two new tooltip labels:
+
+- **`Keep (BoE, below rank floor)`** - when `keepBoeBelowRankFloor` fires
+- **`Keep (BoE, affix you already have)`** - when `keepBoeAffixDupes` fires
+
+Priority: below-rank-floor first (names the specific sell rule that WOULD have fired), then dupes. Both fall through to the existing `Keep (affix rank known)` / `Keep (affix rank needed)` fallbacks when neither BoE gate fires.
+
+Two new label-FAQ entries in the Help panel (`label-keep-boe-below-rank-label` + `label-keep-boe-affix-known-label`) with the standard [?] wiring so a player hovering an item and reading the label can look up what it means.
+
+## Notes
+
+- Downgrade-safe. `DB.keepBoeBelowRankFloor` is additive; pre-v2.66.0 clients ignore the extra field.
+- No test-suite changes; the 10 existing suites all still pass.
+- Quickstart deliberately left alone. The new toggle defaults OFF (pre-v2.66.0 behaviour) so new players get the safe default without discovering BoE/AH concepts they don't have context for yet.
+
+---
+
+
+### v2.65.1
+
+**Rate-limit the Scavenger recovery announce + add a session counter to /ec bugreport.**
+
+Reported by Serv (rough-terrain farming spammed the chat with "went quiet" / "resummoned" every 10-15 s while the movement-stuck / loot-silence recovery loop correctly dismissed + re-summoned a pet trapped on rocks or cliffs). The mechanic itself is legitimate; the spam reads as "lots of problems" even though the addon is working exactly as it should.
+
+## What changed
+
+- **60-second announce cooldown** on the stuck-signal recovery. The first fire per cooldown window still prints "Scavenger fell behind" or "Scavenger went quiet during looting" plus the follow-up "Greedy Scavenger resummoned". Subsequent stuck firings inside the cooldown still dismiss + re-summon the pet, they just do it silently. Suppresses BOTH prints so a lone "resummoned" without a preceding "went quiet" doesn't read as a bug.
+- **New Runtime State line** in `/ec bugreport`: `Scavenger Recovery Fires: N (last Xs ago)`. Counts every stuck firing (announced or suppressed) so the true session cadence stays visible without chat noise. Non-zero on rough-terrain farms is normal - a value that keeps climbing across a session is diagnostic.
+
+## Notes
+
+- EC-TRAP: recovery state stored on `EC_compCache` (not file-locals) because `EbonClearance_Events.lua` is at Lua 5.1's 200-local-variable cap. Adding fresh file-locals throws "too many local variables in main function" at `luac`. The cross-file cache table is already a shared surface, so adding fields there costs nothing.
+- No new toggle. There's no scenario where the chat spam is useful - the mechanic works the same either way.
+- No schema change. Downgrade-safe.
+
+---
+
+
+### v2.65.0
+
+**Re-summon the Scavenger after loading screens (opt-in, only if the pet was out beforehand).**
+
+Requested feature (Alckor): Blizzard's engine dismisses CRITTER-type companions across every loading screen (dungeon, raid, battleground, arena, hearthstone, teleporter, continent flight), so the Scavenger had to be re-summoned by hand every time. Easy to forget, especially on quick zone chains during farming.
+
+## What changed
+
+- **New Scavenger Settings toggle**: `Re-summon Greedy Scavenger after loading screens (if it was out)`. Default OFF (opt-in - the pet-visibility contract shouldn't change on upgrade).
+- **New `DB.restoreScavengerAfterLoad` schema field**. Additive; a pre-v2.65.0 client just ignores it.
+- **Handler block on the existing PLAYER_ENTERING_WORLD** in [EbonClearance_Events.lua](EbonClearance_Events.lua) - captures `wasBootstrapped` before the login bootstrap runs, so the first PLAYER_ENTERING_WORLD after `/reload` or fresh login is skipped (the bootstrap seeds `lastScavengerOut` there, and treating that as "was out before the load screen" would spam a summon on every login).
+- **Gates:**
+  - `DB.summonGreedy` master toggle (respects "pet disabled entirely")
+  - `DB.restoreScavengerAfterLoad` opt-in
+  - `EC_compCache.lastScavengerOut` truthy - **only summons if the pet was actually out just before the load screen**. If the user deliberately dismissed it beforehand, EbonClearance leaves it dismissed. This is the key refinement over the initial "always summon on instance zone-in" scope.
+  - Scavenger not currently out (defensive; `CallCompanion` is a no-op if the pet is up, but skipping the call keeps the initiate-summon state machine tidy)
+- Routes through `EC_SummonGreedyWithDelay` so `DB.summonDelay` (default 1.6s) applies uniformly. Expect roughly a 3 second wait between the loading screen finishing and the pet reappearing - the game's post-zone-in "player busy" window swallows `CallCompanion` for ~1.5 s, so the summon defers into the retry loop until Blizzard's engine accepts it. Documented in the FAQ so a player checking the Help panel understands why the pet doesn't reappear instantly.
+
+## Diagnostics
+
+- `/ec bugreport` --- Scavenger --- section gains a `Restore Scavenger After Loading Screen: true/false` line.
+- `EC_TOGGLE_WATCH_LIST` gains `restoreScavengerAfterLoad`, so flipping the toggle mid-session shows up in the `--- Toggles Changed This Session ---` bug-report section.
+- New FAQ entry `scav-restore-load` on the Scavenger Settings panel with the standard [?] icon wiring. Locale template keys added to `_deDE.lua` + `_frFR.lua`.
+
+## Notes
+
+- No behavioural change with the toggle off (default). A pre-v2.65.0 client seeing the new field just ignores it.
+- Downgrade-safe.
+
+---
+
+
+### v2.64.0
+
+**Four new chance-on-hit pairings + trace tip now names the specific safety net + Help/FAQ plain-language pass.**
+
+## Seed catalog additions
+
+Four weapons whose proc text is a verbatim / near-verbatim match against the engrave-affix spellbook. Shackling (700082) and Fury (700106) were freshly extracted in-session; the resulting spellbook entries gave us their spellIDs and confirmed the pairings. Nightblade + Glaive of the Pit registered "already learnt" at the Anvil AND their proc text is verbatim against the Affliction / Vampirism affix tooltips ("send a shadowy bolt at the target, dealing Shadow damage" / "chance to steal life from the target").
+
+- **Nightblade** (1982) - Affliction (700086). "shadowy bolt / Shadow damage" family (same as Black Duskwood Staff + Shadowblade + Skeletal Club).
+- **The Shatterer** (7954) - Shackling (700082). Opens the disarm family.
+- **Glaive of the Pit** (28774) - Vampirism (700095). "steal life" family.
+- **Rod of the Sun King** (29996) - Fury (700106). Opens the Energy/Rage-gain family.
+
+These join the existing seed catalog in [EbonClearance_Protection.lua](EbonClearance_Protection.lua#L1531), so a fresh install recognises them without needing autolearn to observe an extraction.
+
+## /ec sellinfo trace tip now names the specific safety net
+
+Reported by Serv against `Signet of the Impregnable Fortress of Thick Hide IV` (Epic, iLvl 213, sellPrice=0, affix player owns): the trace's `alreadyHaveAffixRule` step correctly explained the item was blocked from auto-mark, but the tip listed three possible safety nets ("protected as real gear (iLvl >= 200), a gear-set member, or equipped") instead of naming the one that actually fired. The player couldn't tell which of the three was doing the blocking, so couldn't tell which toggle to flip.
+
+Fix: consume the `(bool, reason)` tuple `itemProtectedFromAutoMarkDelete` has returned since v2.60.0 (added for the tooltip-verdict labels but ignored by the trace) and route each reason to a specific tip. New file-local helper `EC_autoMarkProtectionSuffix(reason)` in [EbonClearance_BagDisplay.lua](EbonClearance_BagDisplay.lua) maps the five reason tokens to five specific suffixes:
+
+- `highIlvl` -> "auto-mark is on but this item is high item level (iLvl >= 200). Turn off 'Protect high-iLvl items from unsellable-affix auto-mark' in Keep Settings to let it be trashed, or add to the Delete List by hand."
+- `set` -> "in one of your saved gear sets. Remove it from the set..."
+- `equipped` -> "you're wearing this item. Unequip it first..."
+- `quest` -> "this is a quest item..."
+- `sellList` -> "this item is on your Sell List..."
+
+Both branches that consume this (`affixRankRule` step + `alreadyHaveAffixRule` step) route through the helper. Player reading the trace now sees exactly which toggle to flip.
+
+## Help/FAQ plain-language pass
+
+Three FAQ entries were long walls of text with code-flavored field names and jargon ("safety net", "scan", "gate", `autoAddEquipped`/`autoProtectUpgrades`/`autoProtectEquipmentSets`). Rewritten to be brief and new-player-friendly, following the CLAUDE.md guideline ("lead with what happens, drop the mechanism, avoid code jargon"):
+
+- **`gate-automark-protect-hilvl`** ("Protect high-iLvl items from unsellable-affix auto-mark") - trimmed from 6-sentence block to 4 short sentences. Dropped the DB field name references. Kept the practical "when to turn it off" cue.
+- **`gate-delete-unsellable-dupes`** ("Auto-mark unsellable affixes for deletion") - simplified from ~130 words to ~110, with a natural break after the heads-up sentence. Kept the full list of "never touched" categories since they matter for safety.
+- **`gate-automark-known-recipes`** ("Auto-mark unsellable known recipes for deletion") - trimmed from 8-sentence block to 6 short sentences.
+
+Locale template keys added for all three new answer texts (deDE + frFR). Old keys stay in the locale files as orphans (harmless - the lookup just doesn't hit them anymore).
+
+## Notes
+
+- Six new locale keys registered as empty templates in frFR / deDE (three new Help/FAQ answers + five new trace-tip suffixes + two new prefix templates that accept a `%s` suffix). Test 96c / 99e / test_locale_coverage.lua enforce the parity.
+- Existing `chanceProcConfirmedItems` autolearned entries are unchanged. The four new seed rows and any user-autolearned pairings for the same itemIDs are duplicate-safe writes (seed and autolearn agree on the same `(itemID, spellID)`).
+- No schema change. Downgrade-safe.
+
+---
+
+
+### v2.63.0
+
+**Internal cleanup release from the second audit: shared stats-panel widgets and a lazier bag snapshot. Nothing changes in how the addon looks or behaves.**
+
+- **Stats - Guild and Stats - Server now share their row-building code.** The two panels carried identical copies of the row layout, number formatting, and item-hover wiring - a past fix already had to be applied twice because of it. One shared implementation (in the panel-widgets file) now serves both, so future fixes land once. Visually identical.
+- **The per-loot-burst bag snapshot is now built only when something needs it.** With the common configuration (auto-delete/auto-mark features off), the burst handler used to build a detailed per-slot snapshot that nothing consumed - the loot tally only needs a simple count map. The first feature that actually runs now builds the snapshot; if none runs, none is built. All the v2.59.0 safety rules (same-frame validity, live slot re-verify before destructive actions) are unchanged and the test invariants were updated in lockstep.
+
+No new settings, no schema change, downgrade-safe.
+
+### v2.62.1
+
+**Performance and polish patch from a second full-addon audit. Plus: the Process Bags selection now stays put after processing an item.**
+
+**The visible fix (reported in play-testing):** clicking an item halfway down the Process Bags list and processing it used to snap the selection back to the top of the list. The cursor now stays where you were working - the next same-type item slides into the processed item's spot. Also documented in the FAQ: re-aiming Process Next (skip arrow / list clicks) is blocked by the game during combat for every addon; the panel catches up when combat ends.
+
+**Performance (audit batch, no behaviour change):**
+
+- **Stats - Guild / Stats - Server:** incoming replies repainted the open panel once per message - on a busy realm that's a full recompute per reply. Replies now paint once per half-second settle window. The item-name cache warmup also now only runs once you've opened the panel that session, so non-viewers stop paying it for every overheard message.
+- **Bag events:** the per-event timestamp bookkeeping on the raw bag-update path (one formatted string per event during AOE loot) now stores a cheap number, formatted only when `/ec bugreport` renders. The bugreport's "Last ran" lines for the auto-mark scans are also now accurate (they used to update even when the feature was off).
+- **Item-level overlay:** the bag hook did per-slot work on every bag repaint even with the overlay off (the default). It now skips entirely when off.
+- **Process Bags:** clicking Process Next no longer rescans your bags just to log the cast; the Convert checkbox check no longer does its own extra bag walk per refresh.
+- **Scavenger bubbles:** the mute's screen check skips texts too short to ever match, cutting string work during speech windows in busy areas.
+
+**Correctness hardening:**
+
+- Resilience and chance-on-hit detection no longer remember a "no" answer taken from an item whose data hadn't loaded yet - previously that could silently disable PvP-gear auto-mark or proc protection for an item until `/reload`.
+- A muted bubble frame reused by the game now restores its exact prior mouse state.
+- The Guild stats panel re-sizes its scroll area after live data adds rarity rows, so the bottom item rows can't become unreachable.
+
+No new settings, no schema change, downgrade-safe. One new FAQ entry (combat arming), translated in French and German. Verified in game: stats panels, AOE farm with all auto-deletes/marks, item-level overlay toggle, Process Bags including the cursor fix, `/ec bugreport` timestamps.
+
+### v2.62.0
+
+**Pick which skills Process Bags uses.**
+
+The Process Bags panel now has a checkbox per processing skill (Disenchant, Mill, Prospect, Pick Lock, Convert). Untick one and the same "Process Next" keybind skips that skill while still doing the rest - keep milling herbs by hand, for example, but auto-disenchant and prospect everything else.
+
+## What changed
+
+- New per-skill checkboxes, shown only for skills this character can actually do (known spell); Convert appears only when convertible motes/crystallized items are in your bags.
+- Unticking a skill removes its items from the list and from the keybind rotation. Same single keybind, fewer skills.
+- Choices are saved per character (professions vary by alt). The old Lockpick on/off flag folds into the new per-skill set, so your setting carries over.
+- French and German labels included.
+
+## Schema
+
+- `DB.processEnabledModes` = per-character `{ mode = bool }` table, seeded on next login (a missing entry means enabled). Additive and downgrade-safe.
+
+## Tests
+
+- New invariants in `test_perf_guardrails.lua`: the mode cascade gates every skill on `processEnabledModes`, `EnsureDB` seeds + migrates it, and the panel gates toggle visibility on the character's known spells.
+
+---
+
+### v2.61.0
+
+**French and German translations now included.**
+
+The `frFR` and `deDE` locale files shipped as empty templates since v2.43.0. They are now filled in: roughly 1,140 player-facing strings per language covering every panel, tooltip, chat message, the Help / FAQ, Quickstart, and the diagnostic output. On a French or German client the addon's UI now displays in that language automatically; English clients are unchanged, and `/ec locale frFR|deDE|auto` still forces or clears the language live.
+
+## What changed
+
+- **French (`frFR`)** filled to the informal "tu" register, matching how the game addresses the player. WoW rarity names use the in-game French terms (Commun / Inhabituel / Rare / Épique), French colon spacing and decimal commas are used, and terminology is consistent across the whole file.
+- **German (`deDE`)** filled to the informal "du" register, with the in-game German rarity names (Gewöhnlich / Ungewöhnlich / Selten / Episch) and consistent terminology.
+- **90 recent-feature strings that had no template slot** (Sold History, Frame Hitches / `/ec spike`, Sell Info traces, `/ec affixfallback`, chance-on-hit sharing, guild share, the sell-affix-by-rank rules, recipe bind filters, and several Help / FAQ answers) were added to both templates and translated. They previously showed English on every client, translated or not.
+- Both files preserve every format placeholder (`%s`, `%d`, `%.1f`, ...) and every `|cff...|r` color code exactly, and contain no em dashes, so they pass `test_locale_integrity.lua`.
+- A small number of strings are intentionally left as English fallback: a few runtime-concatenated color fragments whose markup cannot be balanced in isolation, and a handful of English pluralization strings (an inline `%s` that expands to an English word suffix) that would render incorrectly if translated. These display exactly as an English client sees them.
+
+Anything untranslated still falls back to English, so nothing regresses.
+
+## Fixes from in-game testing
+
+- The command-list **Run** button and the list **Add** button now size to their label, so the longer German (and French) text no longer overflows.
+- Shortened German labels that clipped: the Merchant "Use equipped iLvl" row (now "Angelegte iLvl nutzen" / "max. iLvl:"), the Import / Export intro, and the two import buttons ("Zusammenführen" / "Ersetzen").
+- **Stats - Server** odometer: the German combined-item row labels ran into their numbers (and the French "users sharing" label was too long); shortened both so label and value no longer overlap.
+- Shortened over-long button labels that overflowed their fixed-width buttons: **Open Quickstart**, **Change colour**, and the two **Reset** buttons on the Stats panel (French for all four; German for the Reset buttons).
+- **Help / FAQ now translates under a live `/ec locale` override.** The Help entries were built once at file load (client-locale only); they are now built lazily at render time, so the FAQ follows the active language and live switches.
+
+## Tests + docs
+
+- **New test suite `test_locale_coverage.lua`** (10th suite): extracts every literal `L["..."]` key from the source and fails the build if a key is missing from either template, or if the two templates' key sets diverge. This is what catches a forgotten translation slot (the 90 above) automatically from now on.
+- `test_perf_guardrails.lua` (Tests 96c, 99e) previously asserted that new locale keys existed in the templates with an empty value; they now assert the key is present with any value (empty or translated), since filling the templates is the intended lifecycle. All ten suites and luacheck stay green.
+- README and `docs/TRANSLATING.md` updated to note that French and German ship substantially complete.
+
+---
+
+### v2.60.0
+
+**Per-rarity chat-announce filter for auto-delete / auto-mark events.**
+
+Requested feature: the "Announce auto-deletions in chat" toggle on the Delete Settings panel was all-or-nothing, which made it noisy during farming (Greens and Poors flooded the chat) or silent (turn it off entirely and lose the Rare/Epic deletion visibility that mattered). Now the master toggle stays as the top-level gate, and a new per-rarity multi-select decides which rarities actually print when the master is on.
+
+## What changed
+
+- **Master toggle** (`announceAutoDelete`) unchanged. Off silences everything; on lets the sub-filter decide.
+- **Five new tickboxes** under the master, one per rarity (Poor / Common / Uncommon / Rare / Epic), color-coded. Each writes to `DB.announceAutoDeleteQualities[quality]`. Multi-select - tick any subset. Default: all five ticked, matching pre-v2.60.0 "print everything when master is on" behavior.
+- **Three announce sites** now route through the new shared helper `EC_compCache.shouldAnnounceAutoDelete(quality)`:
+  - Auto-delete-on-pickup ("Auto-deleted X.").
+  - Resilience auto-mark ("Marked for deletion (Resilience, unsellable): X").
+  - Affix-dupe auto-mark ("Marked for delete X - affix you can't sell.").
+- Sub-toggles grey out when the master is off (they're inert without the master).
+
+## Schema
+
+- `DB.announceAutoDeleteQualities` = per-quality table (integers 0-4 = Poor-Epic). Seeded to all-true by `EnsureDB` for fresh installs; existing installs auto-migrate on next login. Downgrade-safe (a pre-v2.60.0 client ignores the extra table).
+
+## Tests + docs
+
+- Help / FAQ entry for `gate-announce-auto-delete` extended to describe the new per-rarity filter.
+- Test 94b + 94c updated to lock the new `shouldAnnounceAutoDelete(quality)` helper + call sites.
+- Comment-hygiene baseline for `AutoDelete` bumped from 3 to 8 to cover the new EC-internal field mentions (announceAutoDeleteQualities + shouldAnnounceAutoDelete). Not third-party addon references.
+
+## Bundled trace + detection fixes
+
+Two protection-path issues surfaced during v2.60.0 in-game testing:
+
+### `/ec sellinfo` tips no longer give stale "turn on the toggle" advice
+
+Reported on `Wrap of the Everliving Tree of Fortified by Pain IV` (Rare, sellPrice=0, affix dupe you own, `autoMarkAffixDupes` toggle already on). Trace lines for both affix-related "no vendor value" branches read `(turn on 'Auto-mark unsellable affixes for deletion' to trash it)` even when the toggle was on - misleading advice.
+
+The item was actually blocked by `itemProtectedFromAutoMarkDelete` (v2.57.2 safety net) because iLvl 200 exceeds the 100 "real gear" threshold. Trace now checks the toggle state AND the auto-mark protection at message-selection time and picks one of three tips:
+
+- **Toggle OFF**: existing tip ("turn on 'Auto-mark unsellable affixes for deletion' to trash it").
+- **Toggle ON + item protected**: `auto-mark is on but this item is protected as real gear (iLvl >= 100), a gear-set member, or equipped. Add to Delete List manually if you want it gone.`
+- **Toggle ON + item eligible**: `auto-mark is on so this item will be marked for deletion on the next bag update`.
+
+Applied to both trace steps (`affixRankRule` for rank-below-floor + `alreadyHaveAffixRule` for owned dupes). Four new locale template keys.
+
+### Chance-on-hit detector catches `Equip: Chance on hit` variants + weapon-only extraction rule + weapon-only PROTECTION rule
+
+Reported on `Jouster's Fury` (Rare PvP trinket, iLvl 200). Three-part fix:
+
+1. **Detection**: tooltip line reads `Equip: Chance on hit to increase your critical strike rating by 328 for 10 secs.` (no colon after "hit"). Pre-fix detector only recognized `Chance on hit:` (with colon, via `ITEM_SPELL_TRIGGER_ONPROC`) and `^Equip: Chance to` - the equip-line variant slipped through, so the item was invisible to the protection layer. Added `^Equip:%s*Chance on hit` pattern (anchored to prevent description-line false positives). Trinkets and some equip-proc weapons now register correctly.
+2. **Extraction eligibility**: Anvil-verified refusal (confirmed by Serv). PE's Anvil accepts chance-on-hit-proc extractions from WEAPONS only - trinkets / rings / necks / armor slots are always refused regardless of the proc text. Added a structural fast-path in `playerHasExtractedProc`: if the item's equipLoc isn't in the weapon set (`INVTYPE_WEAPON` / `_MAINHAND` / `_OFFHAND` / `2HWEAPON` / `RANGED` / `RANGEDRIGHT` / `THROWN`), short-circuit to `(false, nil, nil)` before the catalog scan.
+3. **Protection scope narrowed to weapons - non-weapons treated as if no proc line**: follow-on from #2. The chance-on-hit protection was originally built around "keep this so you can extract the proc at the Anvil later" - a mental model that has no reading for a non-weapon (extraction is refused up front). Pre-fix, EC's protection still kept trinkets / rings / necks with proc lines out of the sell path, leaving them wedged for no benefit. Added `EC_compCache.isExtractableWeaponSlot(itemID)` as a shared helper; the chance-on-hit protection outer gate in all three surfaces (`EC_IsSellable`, `describeSellability`, `EC_AnnotateTooltip`) now consults it. Non-weapons with proc lines fall through to whatever OTHER rule applies (Sell List / quality rule / Delete List / etc.) - same as any item without a proc line, no special tooltip label, no special trace step. From the player's perspective a trinket with a proc line looks identical to a trinket without one; the chance-on-hit machinery is completely invisible for non-weapons. Test 109c updated to lock the added weapon gate across the mirror contract.
+
+### Unsellable-affix auto-mark: iLvl safety net is now user-controllable
+
+Reported by Serv against `Wristwraps of the Cutthroat of Feral Grace II` (iLvl 213, Epic, sellPrice=0, affix player owns) and `Axe of the Sen'jin Protector of Iron Will II` (iLvl 200, Epic, sellPrice=0, affix player owns). Both should have been auto-marked for deletion by the `Auto-mark unsellable affixes for deletion` toggle - they meet every listed criterion - but neither was.
+
+Root cause: the v2.57.2 safety net `EC_AUTOMARK_PROTECT_ILVL = 100` treated any item at iLvl >= 100 as "real gear" and skipped it, regardless of user config. That threshold was originally set to prevent Bizzaro's near-item-loss on a brand-new high-value drop, but on a WotLK-max character (gear routinely 200+) the gate ends up protecting old PvP dupes the player deliberately wants gone.
+
+Fix (two parts):
+
+1. **Threshold raised from 100 to 200.** On a WotLK-max character most gear sits above iLvl 100 - the old threshold effectively protected everything, including mid-BC-era drops the player doesn't care about. 200 keeps real endgame gear safe (Ulduar / ToC / ICC drops all sit above) while letting the auto-mark scan catch old low-mid-iLvl PvP dupes and BC-era drops.
+2. **Threshold is now user-controllable.** New `DB.automarkProtectHighILvl` toggle on the **Keep Settings** panel ("Protect high-iLvl items from unsellable-affix auto-mark (iLvl >= 200)"). Default ON (safe default). Turn OFF and the iLvl gate stops applying entirely; auto-mark then catches items with known-dupe affixes and sellPrice=0 at any iLvl. Placed alongside the other `Protect X` toggles (`autoAddEquipped`, `autoProtectUpgrades`, `protectAffixedRareItems`, `protectChanceOnHitItems`, `protectAllTomes`, `protectUnlearnedTomes`) for semantic consistency - Delete Settings is delete-action-only. **The other safety nets stay unconditional either way** - Keep List entries (including autoAddEquipped / autoProtectUpgrades / autoProtectEquipmentSets auto-tags), Sell List entries, currently-equipped items, and quest items are still protected regardless of the toggle state.
+
+Design note: relying on the user's Keep List instead of a raw iLvl threshold matches Serv's play style (curated Keep List + autoAddEquipped + Set-member tags = worn-once gear stays protected; never-worn old drops trash cleanly). Users without that curation can leave the safety net on and get the v2.57.2 protection.
+
+### Resilience auto-mark now catches lowercase "resilience" (case-fold)
+
+Reported by Serv against Jouster's Fury - the same PvP trinket the chance-on-hit fixes above dealt with. It has `Equip: Improves your resilience rating by 73.` in its tooltip AND the user's `autoMarkResilience` toggle is on, but the item was never getting stamped onto the Delete List.
+
+Root cause: `itemHasResilience` at `EbonClearance_Protection.lua:1739` did a **case-sensitive** substring match on the literal `"Resilience"` (capital R). WoW's `Equip:` stat-line text renders in sentence case (`"resilience"` lowercase), so every PvP set piece using the Equip: form silently missed the detector while the bare-stat form (`"Resilience Rating +X"`, capital R) matched. `Auto-mark PvP gear (Resilience) for deletion` therefore covered only a subset of PvP gear.
+
+Fix: case-fold the tooltip text before the substring check (`txt:lower():find("resilience", 1, true)`). Catches both capitalization variants. Note: existing `resilienceCache` entries persist until `/reload` - previously-cached false entries for Equip:-form items need a reload to invalidate.
+
+### Specific "Keep" verdict labels for auto-mark protection
+
+Reported against `Wrap of the Everliving Tree of Fortified by Pain IV` (iLvl 213, sellPrice=0, affix dupe you own). The tooltip showed the bland `Keep (protected)` label with no hint about WHY. The v2.57.2 `itemProtectedFromAutoMarkDelete` gate is one predicate but has five branches (equipment-set member, currently equipped, quest item, on account Sell List, iLvl >= 200 gate), and the player couldn't tell which one fired.
+
+`itemProtectedFromAutoMarkDelete` now returns a `(bool, reason)` tuple where `reason` is a canonical token (`"set"`, `"equipped"`, `"quest"`, `"sellList"`, `"highIlvl"`). The tooltip maps each token to a specific label:
+
+- `Keep (in a gear set)` - saved equipment-set member
+- `Keep (currently equipped)`
+- `Keep (quest item)`
+- `Keep (on Account Sell List)`
+- `Keep (real gear, iLvl >= 200)` - the high-iLvl safety net
+- `Keep (protected)` - fallback for future branches
+
+Every branch shares the same token vocabulary between the mirror-contract callers, so the trace step + tooltip label + bugreport can't drift.
+
+### Tome / recipe tooltip labels renamed for clarity
+
+Reported against `Recipe: Last Week's Mammoth` and `Recipe: Haunted Herring` (learned Cooking recipes, sellPrice=0). The tooltip line `[EC] Keep (Recipe you have)` didn't obviously connect back to the panel toggle labelled "Keep unlearned tomes and recipes" / "Keep them even after you learn them". Renamed the four tome/recipe labels to a leading-verb form that mirrors the panel toggle:
+
+- `Keep (Recipe you have)` -> `Keep (learned recipe)`
+- `Keep (Tome you have)` -> `Keep (learned tome)`
+- `Keep (new Recipe)` -> `Keep (unlearned recipe)`
+- `Keep (new Tome)` -> `Keep (unlearned tome)`
+
+FAQ entry `label-tome-have` retitled to match. Locale template keys migrated (deDE + frFR).
+
+### Bug report field names now say "Tomes/Recipes"
+
+`/ec bugreport` printed `Protect All Tomes: true` and `Protect Unlearned Tomes: true`, dropping the "and recipes" that the panel toggle explicitly names. Renamed both dump lines to `Protect All Tomes/Recipes` / `Protect Unlearned Tomes/Recipes`. Backing DB fields (`protectAllTomes` / `protectUnlearnedTomes`) unchanged - no schema migration.
+
+### Auto-mark unsellable known recipes for deletion
+
+Reported against the same two Cooking recipes: `Sell Known Recipes` was on with all qualities enabled, but the vendor refused the items (`sellPrice=0`) so the sell path was inert and the recipes sat in bags forever.
+
+New Delete Settings toggle: **`Auto-mark unsellable known recipes for deletion`** (default OFF, opt-in). When on AND `Sell Known Recipes` is on, learned profession recipes with `sellPrice=0` are added to the Delete List automatically (one chat line per add). Unlearned recipes are never touched; sellable known recipes are left for the vendor path. Same safety nets as the other auto-marks (Keep List, equipment-set members, currently equipped, quest items). Announce honours the per-rarity chat filter above.
+
+Backed by a new scanner `runAutoMarkKnownUnsellableRecipes` on the shared BAG_UPDATE debounce alongside `runAutoMarkResilience` + `runAutoMarkAffixDupes`. Uses the shared flush snapshot for slot consistency. New DB field `DB.autoMarkKnownUnsellableRecipes` (boolean, default false, downgrade-safe). New FAQ entry `gate-automark-known-recipes` explains the mental model (a companion to Sell Known Recipes, not a replacement). Bug-report dump gains a matching "Auto-mark unsellable known recipes for deletion" line plus a `Last runAutoMarkKnownUnsellableRecipes` timestamp under `Last Event Times`.
+
+### README: exact-count download badges
+
+`img.shields.io/github/downloads/OWNER/REPO/total` hard-codes a `K` / `M` metric abbreviation in its badge template with no query-param opt-out. Report: "4K" isn't the exact number.
+
+Replaced the single abbreviated badge with two exact-count badges:
+
+- **Downloads (this release)** via shields.io `dynamic/json` reading `api.github.com/.../releases/latest`. Exact current-release count, refreshed by the shields.io CDN cache with no infrastructure on our side.
+- **Downloads (lifetime)** via shields.io `endpoint` reading the pre-existing `badge-data` branch's `downloads.json`, which the pre-existing `update-download-badge.yml` scheduled workflow already refreshes on `release: published` events + every 6h via cron. Exact lifetime count; reuses infrastructure already in place, no additional workflow step needed.
+
+### Notes
+
+- Existing `chanceOnHitCache` + `resilienceCache` entries persist until `/reload` after upgrading.
+- `DB.automarkProtectHighILvl` + `DB.autoMarkKnownUnsellableRecipes` + `DB.announceAutoDeleteQualities` are additive schema; a pre-v2.60.0 client sees the fields as absent and defaults to the previous behaviour.
+
+Downgrade-safe.
+
+---
+
+
+### v2.59.12
+
+**Item cache warming on payload decode so first-render name resolution catches localized entries.**
+
+Follow-up to v2.59.11. Report: after v2.59.11 shipped, "Morceaux de vetements de fourrure" (French Fur Clothing Scraps) still appeared on the Stats-Server panel on FIRST open, then self-corrected to "Fur Clothing Scraps" (English) after close-and-reopen.
+
+Root cause: WoW's `GetItemInfo(itemID)` is asynchronous on a cold cache - the first call returns nil AND triggers a background fetch, and subsequent calls return the resolved data. v2.59.11's fix at panel-render time correctly preferred the receiver-locale name via `GetItemInfo`, but hit the cold-cache case on that first render and fell back to the payload's French name. Close-and-reopen worked because the background fetch had completed by then.
+
+Fix: warm the item cache at payload DECODE time - call `GetItemInfo(id)` (return value discarded, purely side-effect) for each item as its `SDAT` / `GDAT` payload arrives. This triggers WoW's async load immediately when the data comes in, so by the time the user later opens the Stats-Server / Stats-Guild panel, the cache is warm and the first render resolves the receiver-locale name without any close-and-reopen dance.
+
+Applied to both `ServerShare.decodePayload` and `GuildShare.decodePayload`. No visible cost - `GetItemInfo` on an already-cached item is O(1); on a cold item it enqueues a background fetch and returns immediately.
+
+No schema change. Downgrade-safe.
+
+---
+
+
+### v2.59.11
+
+**Locale drift on the realm-wide aggregates: cities AND items now render in the receiver's locale.**
+
+Two Serv reports from the Stats-Server panel that trace to the same root cause: aggregation pools across every locale on the realm, so a `frFR` client's payload contains French zone names AND French item names, which an `enUS` receiver used to display verbatim.
+
+## Cities: `EC_CITY_ZONES` now covers localized names
+
+Report: "Fossoyeuse" (French Undercity) appeared on the "Realm's Best Farming Zones" leaderboard.
+
+Root cause: `EC_CITY_ZONES` was enumerated in English only. A `frFR` client farming in Undercity writes "Fossoyeuse" into their `copperByZone` bucket and sends it in `SDAT`. An `enUS` receiver decoded the payload, didn't recognize the localized name as a city, and let it land on the aggregate.
+
+Fix: `EC_CITY_ZONES` now flattens from `EC_CITY_ZONES_BY_LOCALE` covering the ten WotLK capitals across `enUS`/`enGB`, `deDE`, `frFR`, and `esES`/`esMX`. The receiver-side decode filters in `GuildShare` / `ServerShare` route through `EC_compCache.isCityZone` which does an O(1) lookup, so the added entries have no measurable cost. The one-shot EnsureDB / EnsureAccountDB scrubs (run every login post-v2.59.10) also pick up any existing localized city entries in the bucket. Additional locales (`ruRU`, `koKR`, `zhCN`, `zhTW`) can be added when a specific localized city name shows up in the wild - the table structure makes adding a new locale a five-line change.
+
+## Items: display name resolved via local `GetItemInfo`
+
+Report: "Etoffe runique" (French Runecloth) and "Etoffe de tisse-neant" (French Netherweave Cloth) appeared on the "Realm's Most-Sold Items" leaderboard.
+
+Root cause different from the city case: the item aggregate IS keyed by `itemID` (ServerShare.lua:216 + GuildPanel `_itemRows` merge), so different-locale variants of the same item correctly collapse into one entry. But the DISPLAYED name was captured from whichever client's payload arrived first - an `enUS` receiver saw the French name whenever a `frFR` client had seeded the entry.
+
+Fix: resolve the item name at DISPLAY time via local `GetItemInfo(itemID)`, which returns the item's name in the RECEIVER's locale. Fall back to the payload name only when the item cache is cold (rare on a Top-5-sold leaderboard). Applied to both the `Realm's Most-Sold Items` list (Stats-Server) and `Guild's Most-Sold Items` list (Stats-Guild). Uncached items resolve on the next refresh once WoW's item cache warms up.
+
+Test 120a updated to lock the shipped locale set + call out the "Fossoyeuse" regression by name.
+
+No schema change. Downgrade-safe.
+
+---
+
+
+### v2.59.10
+
+**Bug-hunt sweep across the recently-changed surface. One critical trace/vendor divergence + one high-severity affix mirror gap + two medium regressions + a batch of defensive tightening.**
+
+Ran four parallel review passes over the v2.59.5-v2.59.9 change surface plus the three-way `EC_IsSellable` / `describeSellability` / `EC_AnnotateTooltip` mirror contract. Findings and fixes below.
+
+## Critical: /ec sellinfo missed `knownProcPass` in its positive-signal summary
+
+The trace's final `positiveSignal` line at [EbonClearance_BagDisplay.lua](EbonClearance_BagDisplay.lua) had six signals (`isJunk / qualityPass / whitelistPass / affixRankPass / autoDupePass / recipePass`) but was missing the seventh, `knownProcPass` (the "you have this chance-on-hit proc extracted + sellChanceOnHitKnown toggle is on" positive signal added in v2.49.0). Failing input: a Rare weapon with an extracted chance-on-hit proc, `sellChanceOnHitKnown` on, and no other positive signal (Rare rule off / above cap, not on Sell List, no affix). Vendor sells, tooltip promises WILL SELL, `/ec sellinfo` printed `won't sell - no rule matched`. Trace lied.
+
+Fix: compute `knownProcPass` as a local at the top of describeSellability's summary section (strict mirror of the EC_IsSellable block at Events.lua:5615-5631), and include it in `positiveSignal`. Test 123a + 123b lock the presence + the compute gates.
+
+## High: `describeSellability`'s autoDupe ownership chain was only 2-layer
+
+`EC_IsSellable` and `EC_AnnotateTooltip` both use the canonical 3-layer ownership check (description-text / family+rank / family-only) via `EC_compCache.playerOwnsAffix`. The trace re-implemented only the first two layers (`ownsAffix = descKnown or rankKnown`). Failing input: an item with an unranked PE affix whose family the player has learned via spellbook-name match (the v2.45.0 fallback). EC_IsSellable + tooltip agreed WILL SELL; trace summary said `won't sell - protected`.
+
+Fix: add the `familyKnown` third layer to the trace's ownership chain, matching the shape at Events.lua:5514-5532 and Tooltip.lua:484-490. Test 123c locks the 3-layer contract.
+
+## Medium: `NS.AddCheckbox`-registered label re-anchored in `MakeQualityRow` fought the width registry on resize
+
+`MakeQualityRow` in Merchant Settings calls `NS.AddCheckbox`, which (post-v2.59.8) registers the label FontString in `widthRegistry` so it re-widths on Interface Options resize. Immediately after, `MakeQualityRow` re-anchors that same label with a LEFT+RIGHT anchor pair - the anchors become the width source; a per-resize `SetWidth` fights them. Only site in the codebase that combines AddCheckbox + LEFT+RIGHT re-anchor.
+
+Fix: new `EC_compCache.deregisterWidth(widget)` helper in [EbonClearance_PanelInfra.lua](EbonClearance_PanelInfra.lua). `MakeQualityRow` calls it after the re-anchor so anchor-derived sizing wins cleanly. Test 123d + 123e lock the API + call site.
+
+## Medium: tome-veto Sell-List release was only on the tooltip; EC_IsSellable + trace disagreed
+
+The tooltip's tome branch has always guarded on `and not onSellList` so a Sell-Listed tome/recipe releases the veto. `EC_IsSellable` and the trace only narrowed to `qualityPass` alone (v2.51.2 intent) - the both-signals-set case (Sell List entry AND rarity rule match) still hit the veto. Failing input: Pattern: Mooncloth Leggings on Sell List, Rare rule enabled at maxILvl=0, `protectAllTomes` on. Tooltip said WILL SELL. Vendor + trace said won't sell.
+
+Fix: explicit `and not whitelistPass` release in both EC_IsSellable and describeSellability's tome-veto guard so all three surfaces match the tooltip's release. Test 110o updated to lock the new shape.
+
+## /ec sellinfo chance-on-hit trace body now agrees with the tooltip in every case
+
+Two Serv-reported cases motivated a refactor of the chance-on-hit-protection step in `describeSellability`:
+
+1. **Axe of the Deep Woods** (id 811, Wilds proc extracted, `sellChanceOnHitKnown` on): tooltip correctly said `Will Sell (chance-on-hit proc known)`; trace's summary correctly said `WILL SELL` (post-v2.59.10 `knownProcPass` fix); but the trace BODY said `Chance-on-hit protection - n/a`. Root cause: the block's outer gate was `(qualityPass or affixRankPass or autoDupePass or recipePass)` - `knownProcPass` alone wasn't enough to enter, so the "sell released via known proc" branch never fired for that case.
+2. **Destiny** (id 647, stat-buff proc not extractable): tooltip said `Keep (chance-on-hit proc)` unconditionally; trace body said `n/a` (misleading - the proc IS the reason the item stays).
+
+Fix: widen the outer gate to include `knownProcPass`, and add a separate `elseif hasChanceOnHitLine` branch for the "proc present, no active sell rule" case (`chance-on-hit proc (Family) present; no sell rule fired`). Now every path through the block matches the tooltip's framing:
+
+- Item has proc + Allow-Sold → `chance-on-hit proc (Family), but you Allow-Sold this one`
+- Item has proc + `knownProcRelease` → `chance-on-hit proc known (Family), 'Sell known chance-on-hit procs' is on`
+- Item has proc + other signal fires + not released → `Kept - has a chance-on-hit proc (Family). Tip: ...`
+- Item has proc + no active sell rule → `chance-on-hit proc (Family) present; no sell rule fired`
+- Item has no proc / protection off → `n/a`
+
+Two new locale template keys. Test 109c updated to lock the new gate shape.
+
+## Defensive tightening
+
+- **City-scrub self-heal**: dropped the one-shot marker gate on `DB.cityZonesScrubbed` / `ADB.cityZonesScrubbed`. Pre-v2.59.10 a downgrade → upgrade cycle (`v2.59.5+ → v2.59.4 → v2.59.5+`) could re-pollute the bucket via the un-filtered intermediate version but leave the marker true, so the scrub never re-ran. Now the scrub runs every `EnsureDB` (10 lookups, trivial). The marker field is retained as a tombstone. Test 120d / 120e updated.
+- **2H narrowing mirror**: `checkBagsForUpgrades`' addition and removal paths now apply the same 2H-narrowing rule `isDowngradeVsEquipped` / `isUpgradeVsEquipped` use (when MH is a 2H, offhand slot 17 is locked empty and shouldn't be treated as a fillable candidate). Pre-v2.59.10 the drift was safe (over-protect side) but the three predicates disagreed on the same input.
+- **`getLowestEquippedILvl(nil)` nil-guard**: Lua 5.1 crashes on `ipairs(nil)`. Every current caller guards, but a future caller passing nil (equipLoc not in INVTYPE_SLOTS) would take down the sell path. Now returns nil consistently.
+- **Test 122 regex widening**: the reactive-width invariant checker previously required `_G[` to sit immediately after `=` in a `local <var> = _G[...]` assignment. Widened to catch `local <var> = <expr> and _G[...]` variants so a future SetWidth on such a variable can't slip past.
+- **Stale "420 px" comments** in MerchantPanel and ScavengerPanel updated to describe the current reactive-width behavior (post-v2.59.8).
+
+No schema change. Downgrade-safe.
+
+---
+
+
+### v2.59.9
+
+**Owned-affix auto-sell no longer supersedes an iLvl upgrade.**
+
+Reported by Serv. Scenario: a bare ring in bags whose iLvl was above the currently equipped rings was correctly tagged Keep-Upgrade. Engraving an affix the player already owned onto that ring at the PE Anvil flipped its verdict to WILL SELL - the "you own this affix, sell the dupe" positive signal (`autoDupePass`) fired despite the ring still being an iLvl upgrade over the equipped rings. A weapon-side control test held Keep through engrave (weapons often have chance-on-hit lines that provide a second layer of protection; rings don't).
+
+**Root cause**: `autoDupePass` (and its sibling `affixRankPass`) route through a single choke point (`EC_compCache.affixSaleWithinCeiling`) that already respects the rarity rule's iLvl cap AND the dynamic-equipped-iLvl mode when the rule is enabled in that mode. But when the rule is disabled OR set to a fixed-cap the item happens to fall under, the upgrade check is bypassed. The Keep-Upgrade protection normally covers this via the Keep List veto downstream, but the Keep List entry is itemID-keyed - if anything invalidates the entry (post-engrave itemID change, tag-sweep staleness, etc.), the veto stops firing and autoDupe wins.
+
+**Fix**: `affixSaleWithinCeiling` now vetoes the sale unconditionally when the item is an iLvl upgrade over equipped AND `DB.autoProtectUpgrades` is on, regardless of the rarity rule's cap mode. The new `EC_compCache.isUpgradeVsEquipped(itemID, ilvl, equipLoc)` helper is a strict mirror of `checkBagsForUpgrades`' stamp condition (same `getLowestEquippedILvl` predicate, same 2H-narrowing rule, empty slots skipped so a ring-vs-empty-ring-2 case is still considered an upgrade if the populated ring-1 has lower iLvl). Because the single choke point covers `EC_IsSellable`, `describeSellability`, and `EC_AnnotateTooltip`, all three surfaces stay in lockstep without per-site edits. The invariant: "don't auto-sell my upgrades" now holds regardless of Keep List entry state.
+
+Behavior for users who don't run `autoProtectUpgrades`: unchanged. Behavior for users who do run it: the safety net now doubles up. An owned-affix drop that also happens to be an iLvl upgrade over equipped stays as a Keep-Upgrade candidate through engraves / itemID changes / any Keep List entry mutation.
+
+Test 117d / 117e / 117f in `test_perf_guardrails.lua` lock the helper's existence, the veto site, and the shared-predicate contract.
+
+## /ec sellinfo Keep List step now names the auto-tag reason
+
+Related follow-up. Two Kept rings on a `/ec sellinfo` trace used to both read as `Keep List - Kept - on Keep List` with no signal about why each was on the list. The step now appends the auto-tag reason so you can tell at a glance which toggle governs that entry:
+
+- `Kept - on Keep List (auto-tagged: equipped)` - `autoAddEquipped` stamped it when you wore it.
+- `Kept - on Keep List (auto-tagged: in a gear set)` - `autoProtectEquipmentSets` stamped it because the item is in an Equipment Manager set.
+- `Kept - on Keep List (auto-tagged: iLvl upgrade)` - `autoProtectUpgrades` stamped it because its iLvl was above equipped.
+- `Kept - on Keep List (manually added)` - no auto-tag; you added it via Alt+Right-Click or the Keep List panel.
+
+Five new locale template keys registered in `_frFR` / `_deDE`.
+
+## Tooltip: Keep List verdict now wins over "Keep (affix rank known)"
+
+Follow-up from the trace pair above. The Ashen Band tooltip showed `[EC] Keep (affix rank known)` while its sibling Band of the Bone Colossus (both on the Keep List with the same `equipped` auto-tag) showed `[EC] Keep (equipped)`. Different verdicts for the same reason.
+
+Root cause: the tooltip's affix-processing block has an `elseif playerKnows...` branch that overwrote the earlier `Keep (equipped)` / `Keep (in gear set)` verdict when the player owned the item's affix. The sibling `elseif` inside the same block for the sellable-item path already had a Keep-List-wins short-circuit (via `destinationLabel`); the unsellable-item path (sellPrice = 0) had no equivalent guard.
+
+Fix: add the same `IsInSet(DB.blacklist, id)` guard to the affix-known / affix-needed elseif so a Keep-List item keeps its origin-aware verdict (`Keep (equipped)` / `Keep (in gear set)` / `Keep (upgrade)`) regardless of whether the player owns the affix on it. Aligns the tooltip with the trace and with the sellable-item sibling behaviour.
+
+No schema change. Downgrade-safe.
+
+---
+
+
+### v2.59.8
+
+**Delete Settings + other checkbox labels now scale with the Interface Options window + lock the invariant.**
+
+Opening Interface Options -> EbonClearance -> Delete Settings, the checkbox labels ("Auto-delete these items the moment they enter your bags", etc.) were clipped mid-word ("...your ba...") and never re-measured when the panel was resized.
+
+**Root cause**: every checkbox label FontString on the Delete Settings panel (and elsewhere) used a bare `SetWidth(420)`. The default Interface Options panel is ~360px wide, so 420 always overflowed and the label extended past the right edge. Because the width was a build-time literal, resizing the window didn't help - the widget stayed frozen at 420. The reactive-panel-layout invariant (`docs/ADDON_GUIDE.md`) requires any width snapshot to route through `EC_compCache.setPanelWidth` / `registerWidth` so the width tracks Interface Options resize.
+
+**Fix**: eight sites converted from `SetWidth(420)` to `EC_compCache.setPanelWidth(text, 42)` (matching the adjacent note-FontString pattern: 26px indent past the checkbox anchor + 16px right margin) plus `SetWordWrap(true)` so long labels wrap onto multiple lines instead of clipping:
+
+- Six checkbox labels on the Delete Settings panel: master switch, auto-delete-on-pickup, auto-delete grey on loot, auto-mark Resilience, auto-mark unsellable affixes, announce-in-chat.
+- The shared `NS.AddCheckbox` helper in `EbonClearance_PanelWidgets.lua`. Fixing this one propagates to every panel that uses the helper (Guild, Server Stats, Main, Merchant, Scavenger).
+- Two direct-usage sites: `Repair gear while selling` on the Merchant panel and `Summon Greedy Scavenger after selling` on the Scavenger panel. Their help-icon `[?]` anchoring uses `GetStringWidth` (actual text pixel width), not the frame width, so the icons still sit right after the label text.
+
+**New Test 122 in `test_perf_guardrails.lua`** locks the invariant. Every EC panel file is scanned; for each `local <var> = _G[<name> .. "Text"]` (a checkbox label lookup), the test checks that the surrounding block does NOT contain a bare `<var>:SetWidth(<numeric literal>)` call. Any regression fails the gate with a source location. Setting a reactive width via `EC_compCache.setPanelWidth` remains the allowed pattern.
+
+## Delete Settings panel now scrolls
+
+Follow-on from the reactive-width fix above. With labels wrapping onto multiple lines on a narrow Interface Options window, the panel's total content extended past the bottom of the visible area and overlapped the Okay/Cancel buttons.
+
+Fix: wrap the Delete Settings panel in a scroll frame (`initPanel(self, refresh, build, true)`), the same pattern the Protection / Merchant / Item Highlighting / Quickstart panels already use. All child widgets now anchor into the scrollable content region; `NS.FitScrollContent(content, announceNote)` sizes the scroll extent to the last row. Overflow is handled by the scroll bar instead of clipping.
+
+## Two more chance-on-hit pairings (Anvil-verified)
+
+- **Shard of Azzinoth** (32471) - **Azzinoth** (700108). Near-verbatim match against the Azzinoth affix spellbook tooltip ("Calls forth an Ember of Azzinoth to protect you in battle for a short period of time."). Anvil accepts.
+- **Deathbringer's Will** (50363) - **NEVER_EXTRACTABLE**. Trinket with an Equip-line stat-buff proc ("awaken the powers of the races of Northrend"). PE weapon-affix families don't apply to trinkets; Anvil refuses. Any "of X" affix on a given drop is a stat-family random affix, not a chance-on-hit family.
+
+---
+
+
+### v2.59.7
+
+**Four new Anvil-verified chance-on-hit pairings + /ec sellinfo now names the proc.**
+
+## Seed catalog additions
+
+Four weapons whose proc text is a near-verbatim match against the engrave-affix spellbook, all Anvil-confirmed as extractable:
+
+- **Flurry Axe** (871) - Flurry (700098). Same "extra attack" family as Thrash Blade + Ironfoe.
+- **Teebu's Blazing Longsword** (1728) - Incineration (700087). Same "blast target dealing Fire damage" family as Alcor's Sunrazor.
+- **Skeletal Club** (2256) - Affliction (700086). Same "shadowy bolt" family as Black Duskwood Staff + Shadowblade.
+- **Strike of the Hydra** (6909) - Dissolution (700089). Opens the Dissolution family, distinctive "Corrosive acid + armor reduce" wording.
+
+These join the existing seed catalog in [EbonClearance_Protection.lua](EbonClearance_Protection.lua#L1505), so a fresh install recognises them without needing autolearn to observe an extraction. Any account already running EC that had autolearned some of these gets the seed as a duplicate-safe write (seed and autolearn agree; the pair already existed in `ADB.chanceProcConfirmedItems`).
+
+## /ec sellinfo now names the chance-on-hit proc
+
+When a bag item is kept because of chance-on-hit protection, the trace step now names the proc when EC knows it. Pre-fix:
+
+```
+chanceOnHitProtection = Kept - has a chance-on-hit proc. Tip: turn off ...
+```
+
+Post-fix, for an item with a mapped pairing:
+
+```
+chanceOnHitProtection = Kept - has a chance-on-hit proc (Flurry). Tip: turn off ...
+```
+
+Same enrichment applies to the "Allow-Sold" branch. The family name comes from the seed catalog first, then the autolearned `ADB.chanceProcConfirmedItems`, then nil (in which case the old un-enriched message is used). Cheap lookup - no catalog scan - so it runs unconditionally regardless of the `sellChanceOnHitKnown` experimental toggle. Two new localisation keys registered as empty templates in the frFR / deDE locale files.
+
+No schema change. Downgrade-safe.
+
+---
+
+
+### v2.59.6
+
+**Two fixes: Quickstart Q13 "(default)" label + Stats - Guild "Sold by Quality" wrap.**
+
+Both from Qvintus in Discord.
+
+## Quickstart Q13: "(default)" tag pointing at the wrong option
+
+Quickstart Q13 "Allow EC to delete Delete-List items at vendors?" tagged **No** as `(default)`, but a fresh install actually seeds `DB.enableDeletion = true` and the **Yes** option is what gets selected. A new player who trusts the tag would assume EC won't delete anything and get surprised when items disappear.
+
+Fix: swap the `(default)` tag from the No option to the Yes option in [EbonClearance_QuickstartPanel.lua](EbonClearance_QuickstartPanel.lua). Locale template keys in [EbonClearance_Locale_frFR.lua](EbonClearance_Locale_frFR.lua) / [EbonClearance_Locale_deDE.lua](EbonClearance_Locale_deDE.lua) updated to match.
+
+**New Test 121 in `test_perf_guardrails.lua`** prevents this class of regression. For every Quickstart radio option labeled `(default)`, the test parses `makeRadioGroup` calls + a hand-authored golden map + the relevant EnsureDB seeds and asserts:
+
+- The labeled option's value matches what `snapshotAnswersFromDB` would produce on a fresh install.
+- Exactly one option per question carries `(default)` (no ambiguity for new players).
+- Every entry in the golden map has a live label (catches label removal).
+- The specific EnsureDB seed lines the golden depends on still hold the assumed values (catches DB-side drift).
+
+Locks four questions today: `affixRankFloor` (Q8b), `sellRecipes` (Q9b), `delete` (Q13), `deleteMode` (Q13b). Any drift between the panel label, the EnsureDB seed, and the golden map fails the gate before shipping.
+
+## Stats - Guild: "Sold by Quality" now aligns with the surrounding blocks
+
+The Guild "Sold by Quality" section had two problems. First, it was rendered as a single word-wrapped FontString with pairs joined by two spaces (`Poor 42,073  Common 158,185  Uncommon 8,090  Rare 8,131  Epic 1,551`); when the last pair fell right at the wrap point, WoW's word-wrap broke between the rarity name and its count, so "Epic" ended up on one row and "1,551" on the next. Second, even after switching to one row per rarity, the block still sat flush-left while the Totals block above and the Most-Sold Items block below are both two-column (label on the left, value right-aligned at a shared value column) - the quality section read as visually disconnected from its neighbours.
+
+Fix: each rarity is its own `makeRow` two-column row, colored per quality. The rarity name sits in the left column and the count aligns at the same value column as `Combined gold` / `Combined items sold` / etc. The block compacts around visible rarities (missing rarities do not leave a gap): each visible row re-anchors to the previous visible row at refresh time, and the "Guild's Most-Sold Items" header re-anchors below the last visible row so the block closes cleanly.
+
+No schema change. Downgrade-safe.
+
+---
+
+
+### v2.59.5
+
+**Stats: cities dropped from Top Zones, viewer now included in the Stats - Guild panel, duplicate Refresh button removed.**
+
+Three small stats fixes.
+
+## Bug fix: the viewer's own totals now appear in the panel
+
+Opening the Stats - Guild panel showed pooled totals from opted-in guildmates but NOT the viewing player's own totals - even when they were opted in to share. Opening your own panel felt like watching from outside the room.
+
+**Root cause**: `GuildShare.RequestNow` broadcast a `GREQ` request; each opted-in peer whispered a `GDAT` reply back; the local aggregate merged those replies. But the `GREQ` handler had a self-skip (`sender ~= playerName()`) so the local player never whispered a reply to themselves. Their own data never entered their own aggregate.
+
+**Fix**: `RequestNow` now seeds the local player's payload into the freshly-reset aggregate via the exact same `mergeReply(decodePayload(localPayload()))` path a real `GDAT` would take. Gated on `shareGuildData` so opt-out means "not visible to yourself either" (no partial-share footgun).
+
+This matches what ServerShare's `RequestNow` (`EbonClearance_ServerShare.lua:288-293`) has always done - the comment there says "Always include ourselves when sharing, so the panel shows our own totals even if nobody else is around." GuildShare was the odd one out; parity restored.
+
+New static test asserts the seed pattern.
+
+## UI cleanup: bottom "Refresh" button removed
+
+The Stats - Guild panel had two Refresh buttons that read as duplicates: `Refresh from guild` (the ProcShare button that refreshes chance-on-hit knowledge, v2.53.0) sat close to the plain `Refresh` at the bottom (which triggered `GuildShare.RequestNow` for the stats aggregate). Both had refresh in the label; the pairing was confusing.
+
+The bottom button is now removed. The panel already fires `RequestNow` on every OnShow at `EbonClearance_GuildPanel.lua` (see the closing block of `initPanel`), so opening the panel or closing/re-opening it does the same job. The `Refresh from guild` button (for the ProcShare chance-on-hit knowledge) stays because it's a separate feature with its own throttle and merge path.
+
+No schema change. Downgrade-safe. If you were relying on the exclusion behaviour (viewer's data hidden from viewer's aggregate) - unlikely - toggle `shareGuildData` off and the panel returns to empty.
+
+## City sales removed from Top Zones
+
+You can't farm in Dalaran, Stormwind City, or any other capital - vendoring mailboxed items in a city isn't farming, but those coppers were still landing on the Top Zones leaderboard as if the player had farmed there. That distorted the "best farming zone" comparison.
+
+**Fix, three parts:**
+
+1. **Attribution filter.** `EC_compCache.attributeCopperToZone` (the single choke point every sell path routes through) now checks `EC_CITY_ZONES` and skips the per-zone bucket write when the current zone is a WotLK city. The wallet `totalCopper` is bumped separately by the caller, so wallet views are untouched - only the "which zone did this gold come from" attribution changes.
+2. **One-shot scrub of historical data.** Two migration markers (`DB.cityZonesScrubbed` per character, `ADB.cityZonesScrubbed` account-wide) run once each and strip city keys out of `DB.copperByZone` + `ADB.accountStats.copperByZone`. Existing Dalaran / Stormwind entries disappear on next login. Idempotent.
+3. **Receiver-side filter for Stats - Guild and Stats - Server.** Pre-v2.59.5 peers still send their own polluted zone entries. `GuildShare.decodePayload` and `ServerShare.decodePayload` now drop any city-named zone at decode time so the pooled Guild / Server aggregates stay clean even during the rollout period.
+
+The city set covers the ten capitals: Stormwind, Ironforge, Darnassus, The Exodar, Orgrimmar, Thunder Bluff, Undercity, Silvermoon, Shattrath, and Dalaran. Sub-town hubs with mailboxes (Booty Bay, Ratchet, Everlook, etc.) stay unfiltered because their surrounding zones are genuinely farmable (STV / Barrens / Winterspring). `EC_compCache.isCityZone(zone)` is exposed so any future display-time filter can route through the same list.
+
+Locale note: names match `GetRealZoneText()` output on English-locale clients. Non-English locales still write to their localised city names; the filter would need per-locale tables to catch those and isn't wired yet (this is Project Ebonhold's audience, so scope kept tight).
+
+Test 120 in `test_perf_guardrails.lua` locks the city set + helper + attribution guard + both scrub markers.
+
+---
+
+
+### v2.59.4
+
+**Two changes: `/ec bugreport` gains a Recent Processed section, and Process Bags DE now agrees with the sell path on ranked owned-affix items.**
+
+## Process Bags DE parity fix
+
+Reported by Serv. Epic set items with known ranked affixes (`Nightslayer Pants of Relentless Crits V`, `Salamander Scale Pants of Relentless Crits V`, `Sabatons of Might of Relentless Crits V`, etc.) traced as `WILL SELL` at the vendor via `autoDupePass` (the "you already own this affix at this rank" positive sell signal), but were silently hidden from the Process Bags Disenchant section. Same item, same ownership, two different verdicts.
+
+Root cause was a mirror-drift. The sell path (`EC_IsSellable` in `EbonClearance_Events.lua`) and the tooltip (`EC_AnnotateTooltip` in `EbonClearance_Tooltip.lua`) both route ownership through the shared `EC_compCache.playerOwnsAffix` helper, which checks **description OR rank OR family**. Process Bags DE (`EbonClearance_Process.lua:365-377`) had an inline check that only covered **description + unranked-family** - missing the ranked case that v2.35.1 added to the tooltip and v2.44.0 added to the sell path. Result: items owned via `playerHasAffixRank(name, rank)` released from sell but stayed protected in Process Bags.
+
+Fix: route Process Bags' DE gate through the same `EC_compCache.playerOwnsAffix` helper. Now the sell path, tooltip, and Process Bags DE all use identical ownership semantics. Test 99i updated to lock the new predicate.
+
+Downgrade-safe: a rank-known owned Epic that pre-v2.59.4 was hidden from Process Bags DE is still WILL SELL at the vendor - just no more surprise that it doesn't DE.
+
+## Recent Processed ring buffer
+
+Requested by Serv after wondering whether Process Bags might have disenchanted an affix they needed - the existing `Recent Sold` and `Recent Deleted` rings only cover vendor sales and delete-list deletions, so profession-spell casts driven by Process Bags left no per-item trace. This release fills the gap.
+
+**How it works:**
+
+Requested by Serv after wondering whether Process Bags might have disenchanted an affix they needed - the existing `Recent Sold` and `Recent Deleted` rings only cover vendor sales and delete-list deletions, so profession-spell casts driven by Process Bags left no per-item trace. This release fills the gap.
+
+**How it works:**
+
+- **Capture point** (`EbonClearance_ProcessBagsPanel.lua` PostClick): when the Process Next button fires, the panel snapshots the armed row's item info (`itemID`, `itemLink`, `mode`, `spellName`, `perCast`) into `EC_compCache.pendingProcessCast`. The `PostClick` fires while the item is still in the bag (the cast bar has started but not resolved) - `UNIT_SPELLCAST_SUCCEEDED` would arrive too late (item already consumed).
+- **Commit point** (`EbonClearance_Events.lua` `UNIT_SPELLCAST_SUCCEEDED` handler): when the successful spell's name matches the pending capture, log to `NS.recentProcessedLog` and clear the pending struct. A non-matching cast (auto-attack, self-heal, etc) leaves pending alone so the next matching cast still commits.
+- **Ring buffer**: `NS.recentProcessedLog`, 200-entry cap, session-only, wiped on `/reload`. Same shape as `NS.recentSoldLog` / `NS.recentDeletedLog`.
+- **`/ec bugreport` section**: `--- Recent Processed (this session) ---` after Recent Deleted. Shows `[HH:MM:SS] itemID xN [itemName] (mode)` per row - e.g. `[13:24:37] 2447 x5 [Peacebloom] (Mill)`.
+- **Convert mode** (Crystallized / Motes v2.44.9) has no `/cast` component, so `UNIT_SPELLCAST_SUCCEEDED` never fires for a bare `/use`. Convert casts are not logged today - the `spellName` gate skips the capture. That's an acceptable gap because Convert is 1-click deterministic (10 lower-tier -> 1 Eternal / Primal) and there's no misfire risk.
+
+No behaviour change to the Process Bags flow itself. Additive schema (no new SavedVariables field). Downgrade-safe to v2.59.3.
+
+---
+
+
+### v2.59.3
+
+**Bug fix: Process Bags Lockpick + Auto-Open loop when multiple same-type lockboxes are in bags.**
+
+Reported by Serv. When a rogue picked lockbox A of itemID X, the auto-open driver correctly opened A. But another still-locked lockbox of the same itemID X in bags caused the auto-open driver to loop, spamming "item is locked" chat errors every 0.4 seconds.
+
+**Root cause**: v2.59.0's `openableCache` (in `EbonClearance_Core.lua`) mapped itemID -> `"openable"` after `EC_IsOpenable` in `EbonClearance_Events.lua` first saw an `ITEM_OPENABLE` tooltip line for that itemID. On subsequent calls for the same itemID, the code skipped the tooltip re-scan and only trusted `GetContainerItemInfo(bag, slot)`'s `locked` field to gate whether `UseContainerItem` was safe to fire.
+
+That trust was misplaced. In 3.3.5a, `GetContainerItemInfo.locked` returns `true` only when the item is actively being manipulated (mid-cast, mid-swap), NOT when the item is a lockbox that requires unlocking. A never-picked lockbox of an itemID cached as openable therefore returned `locked = false`, passed the openable check, `UseContainerItem` fired, the server refused with "item is locked", and the 0.4s auto-open retry loop hit the same path again.
+
+**Fix**: `EC_IsOpenable` no longer caches `"openable"`. The tooltip scan (which reliably sees the `LOCKED` line for still-locked instances) runs on every call for a potentially-openable slot. The `"never"` half of the cache stays (skipping the re-scan on Hearthstones, potions, non-container gear is where the real perf win lives - most bag slots take that path).
+
+Test 119f updated to lock the new behaviour (assert that no `= "openable"` write exists in `EC_IsOpenable`).
+
+Downgrade-safe to v2.59.2. No schema change.
+
+---
+
+
+### v2.59.2
+
+**Two more items marked non-extractable from a fresh captureproc + Anvil verification.**
+
+Added to `EC_CHANCE_PROC_NEVER_EXTRACTABLE`:
+
+- **The Untamed Blade (19334)** - on-hit "Increases Strength by 300 for 8 sec" is a stat-buff proc with no matching PE weapon affix. Iron Will is a passive percentage Strength buff, not an on-hit proc; Ferocity is AP-stacking on crit, different mechanic. Mirrors the Hand of Edward the Odd stat-proc pattern already pinned in v2.59.1.
+- **Gutgore Ripper (17071)** - combo proc reads like Affliction ("Sends a shadowy bolt") stacked with Frailty ("lowering all stats"), but PE has not registered this specific combo item for extraction.
+
+Data-only patch. No schema change. Downgrade-safe to v2.59.1.
+
+---
+
+
+### v2.59.1
+
+**Two chance-on-hit pairings pinned, five items marked non-extractable, and Stats - Server sharing flipped to ON by default.**
+
+## Stats - Server sharing now defaults to ON
+
+v2.58.0 shipped `shareServerData` as opt-in default OFF; v2.59.1 flips it to ON. The rationale: the odometer only exists as a live shared count, and the design comment always said "off by default keeps opted-out users at zero cost." Empirically, that also meant most users never saw the panel populate. Turning it on by default surfaces the community tally to every user AND grows the sample size / sharer headcount.
+
+**Migration behaviour (`EbonClearance_Events.lua`, `EnsureDB`):**
+
+- **Fresh install / new character:** `shareServerData` is seeded `true`. A `shareServerDataDefaultBumped = true` marker is also stored.
+- **Existing user with v2.58.0 default-off value:** `EnsureDB` sees `shareServerData == false` AND `shareServerDataDefaultBumped == nil`, so it flips `shareServerData` to `true` **once** and sets the marker.
+- **After the migration:** if the user then unchecks "Share my totals with the realm" in the Stats - Server panel, the value goes back to `false` and stays there (the marker prevents `EnsureDB` from re-flipping it).
+
+Everything downstream is unchanged - the anonymity guarantees, the hidden-channel join gate, the 20-minute per-sender aggregate TTL, the `ver:` piggyback that feeds `NotePeerVersion` for realm-wide update alerts. Only the seed value moved.
+
+Also updated: the Stats - Server panel description ("Sharing is on by default so you can see it and contribute. Uncheck below if you'd rather stay out."), the Help FAQ entry `server-stats`, the README bullet, and the `docs/ADDON_GUIDE.md` v2.58.0 section.
+
+## Chance-on-hit seed updates
+
+Ground-truth from a fresh `/ec captureproc` dump, cross-referenced against the spellbook's `Allows you to engrave this affix` tooltips AND tested at the Anvil.
+
+**Confirmed extractable (added to `EC_CHANCE_PROC_CONFIRMED_ITEMS`):**
+
+- **Shadowblade (2163)** to **Affliction (700086)** - "Sends a shadowy bolt" phrasing, same family as the already-pinned Black Duskwood Staff (937).
+- **Hurricane (2824)** to **Frost Arrow (700115)** - the affix name is literal in the proc text.
+
+**Confirmed non-extractable (added to `EC_CHANCE_PROC_NEVER_EXTRACTABLE`):**
+
+The proc text on each of these looked like it would match a known PE affix family, but the Anvil UI refuses extraction, meaning PE has not registered the specific item's proc even though the visual is familiar.
+
+- **Sceptre of Smiting (19908)** - poison-nova has no matching PE affix.
+- **Skullforge Reaver (13361)** - drain-life phrasing looks like Vampirism but Anvil refuses.
+- **Reclaimed Shadowstrike (49302)** - "Steals life" phrasing likewise refuses.
+- **Raging Deathbringer (49500)** - "Sends a shadowy bolt" phrasing looks like Affliction but refuses.
+- **Hand of Edward the Odd (2243)** - Haste-Rating stat proc; no matching PE affix family. Mirrors the same character's ring **Signet of Edward the Odd (44308)** already marked non-extractable.
+
+**Deferred:**
+
+- **Zulian Slicer (19901)** - Serv can extract it but "already know" the affix from a prior session; the proc text ("Slices for X Nature damage") has no unique identifier that matches any spellbook tooltip. Left un-pinned; the v2.49.1 autolearn would catch it on a fresh extraction, but that opportunity is gone for this character.
+- **Shiny Shard of the Scale (49488)** - a set bonus, not a chance-on-hit weapon proc. The weapon-only gate in `chanceProcSpellID` correctly ignores it.
+
+Data-only patch. No schema change, no behaviour change to already-pinned items. Downgrade-safe to v2.59.0.
+
+---
+
+
+### v2.59.0
+
+**Performance: bag bursts now cost one bag scan instead of up to nine. Plus a Loot Log button on the main page.**
+
+The headline is invisible but big. When loot lands, EbonClearance runs its follow-up work (auto-open, upgrade detection, auto-delete on pickup, PvP/affix auto-marks, the Loot Log tally, grey auto-delete). Each of those used to walk your bags independently - up to nine full scans per loot burst, which is where the "Bag update" frame hitches during AOE farming came from. Now:
+
+- **One shared bag snapshot per burst.** The burst handler reads your bags once and every follow-up feature works from that single snapshot. Measured on a live AOE farm with all auto-features on: the addon's share of a slow frame dropped from ~50-75ms to ~10-20ms.
+- **Container detection is cached.** Deciding "is this item openable?" needed a tooltip inspection per bag slot on every burst; the answer is now remembered per item. Locked junkboxes are deliberately never cached as "not openable", so they still auto-open after you pick the lock.
+- **Safety unchanged.** Every destructive path (auto-delete, auto-mark) re-checks the live bag slot before acting, so the snapshot can never delete or mark the wrong thing. All the one-per-burst and ordering rules are preserved and locked by a new test invariant (Test 119).
+
+**Also: Loot Log button on the main settings page.** Sits under Sold History and opens the same Loot Log window as the Stats panel button / `/ec loot`, so both session windows are reachable from the front page.
+
+No schema change, downgrade-safe. Verified in game: AOE farm soak with auto-delete/auto-mark/auto-open all active, lockbox auto-open after lockpicking, Loot Log and Sold History tracking, upgrade auto-keep.
+
+### v2.58.3
+
+**Fix: the Scavenger's new "Beep. Configuration loaded..." resummon bubble now stays muted. Plus comms hardening from the audit's second batch.**
+
+The bot recently started confirming its loot-filter settings in a speech bubble on every resummon, and that bubble escaped the mute twice over:
+
+- The bubble's text is rendered differently from its chat line (the embedded player name carries formatting), so the exact-text match missed it. Bubble matching now normalises both sides (colour codes, links, punctuation, spacing) before comparing.
+- Muted bubbles on this server outlive the mute's 8-second tracking window, so the hidden bubble could pop back mid-life. A killed bubble now stays hidden for as long as it shows the text it was muted for, and only returns when the game reuses that bubble frame for someone else's speech - so muting the Scavenger can never swallow other players' or mobs' bubbles.
+- New diagnostic: **/ec bubbles** shows what the mute recorded from chat vs the bubble texts seen on screen (HIDDEN / MISS per line, copyable). If a bubble ever slips through again, run it within a minute and paste the report. Session-only.
+
+Also in this release (audit batch 2 - hardening, no behaviour change):
+
+- **Realm channel safety:** the hidden-channel transport re-checks its channel number right before every send and on every received message. Previously, leaving another chat channel could renumber the slots and either post raw server-stats data into a public channel or make the transport go deaf until relog.
+- **Reply-storm protection:** guild stats and proc-pairing replies now check the send throttle BEFORE building the reply payload, so a misbehaving client spamming requests can't burn CPU on every opted-in guildmate.
+- **Bag borders:** the affix highlight scan now only runs on Rare/Epic items and only when a Known/Needed Affix highlight is actually enabled - greys and consumables no longer pay a tooltip scan on bag open.
+- **Login safety:** if the character name isn't available at the earliest addon-load moment, settings bind to a temporary namespace instead of persisting an orphan "Unknown" character entry in saved variables.
+
+No new settings, no schema change, downgrade-safe. Verified in game: resummon bubble muted across its full lifetime, other bubbles unaffected, /ec realmtest, guild/server stats, bag border tints.
+
+### v2.58.2
+
+**Performance patch: less repeated work on loading screens, bag bursts, and idle windows. No behaviour change.**
+
+An audit pass over the whole addon; this release ships the safe subset. Nothing looks or acts different in game - it just does less redundant work:
+
+- **Loading screens:** the saved-variables migration sweep ran again on every zone change, instance door, and taxi arrival. It now runs once at login, where it belongs.
+- **Stats - Guild / Stats - Server:** incoming share replies repainted those panels (full aggregate + sort) even while the options window was closed. Repaints now only happen while the panel is actually visible; opening it still shows everything merged so far.
+- **Bag tooltips:** hovering an affixed Rare/Epic built the affix-debug payload (string work included) even with `/ec affixdebug` off. It's now skipped entirely unless debugging is on.
+- **Sold History window:** an open-but-idle window re-filtered and re-sorted the full session log every 2 seconds. It now rebuilds only when the log actually changed.
+- **Vendor cycle:** each queued sell re-queried item data the sell check had already fetched, and the affix-protection gate fetched the same affix record twice. Both now reuse the first lookup (`EC_IsSellable` returns quality alongside its existing values; Test 100d updated in lockstep).
+
+No new settings, no schema change, downgrade-safe. Verified in game: loading screens, vendor cycle with per-rarity stat attribution, affix tooltip verdicts with debug off/on, live Sold History updates, and guild/server stats after closed-panel replies.
+
+### v2.58.1
+
+**UI fix: "Sell affixes below rank" slider now labels its max as VI (6), matching the actual range.**
+
+Reported by Serv. v2.52.0 widened the slider range from 0-5 to 0-6 for Project Ebonhold's rank VI affix scaling, but the right-hand tick label under the slider still hardcoded `"5"`. Slider drag could reach 6 (and the setting saved correctly), but the visible max marker lied.
+
+One-line fix in `EbonClearance_ProtectionPanel.lua`: `rankHigh:SetText("6")` (was `"5"`). Slider range, save/load, and Roman-numeral parsing were already correct - this was cosmetic only.
+
+Text-only. No behaviour change. Downgrade-safe.
+
+---
+
+
+### v2.58.0
+
+**New: a realm-wide "Stats - Server" odometer, plus realm-wide update checks. Both opt-in, off by default.**
+
+- **Stats - Server (collective odometer).** A new panel showing the combined, anonymous totals of every EbonClearance user online and sharing right now: gold vendored, items sold, items deleted, items processed (disenchant / mill / prospect), the realm's busiest farming zones and most-sold items, and a live count of how many users are sharing. It's a community "look what we cleared together" tally, not a leaderboard and not an all-time record - the numbers reflect who's online at that moment. Never shows names. Turn on **"Share my totals with the realm"** to contribute (anonymously) and see it.
+- **Realm-wide update alerts (no new toggle).** Sharing your totals puts you on the realm channel, so the *existing* update-alert (the version-check toggle on the main page) now also hears about a newer EbonClearance from anyone on the realm, not just your guild or group. There's no separate realm-update switch, and update checks never force a channel join on their own.
+- **How it works (and the one cost).** WoW 3.3.5a has no realm-wide addon channel, so these ride a **hidden chat channel** (joined only while one of the toggles is on, and hidden from your chat tabs). That uses one of your 10 chat-channel slots while active. Traffic is minimal and self-limiting: nothing is sent unless someone opens the panel, requests cancel each other out when the channel's been active recently, replies are spread out, and each client answers at most once per few minutes.
+- **Privacy + safety.** Everything is anonymous (only pooled totals, never names). It's a public channel, so a per-contributor sanity cap ignores obviously-faked numbers and the tally is never saved (a troll's number vanishes when they log off). Off by default.
+
+**Also:** large numbers now use thousands separators for readability - item counts across every Stats panel (Personal / Guild / Server), e.g. `2,200,199` instead of `2200199`, and gold amounts everywhere gold is shown (tooltips, chat, stats, bug report), e.g. `802,579g` instead of `802579g`. Silver/copper are unchanged.
+
+New account-wide schema field (`shareServerData`), additive and downgrade-safe. New files: `EbonClearance_RealmComms.lua`, `EbonClearance_ServerShare.lua`, `EbonClearance_ServerStatsPanel.lua`. Locked by `tests/test_servershare.lua`.
+
+### v2.57.2
+
+**Safety fix: your item-level cap is now a hard ceiling the affix rules can't override.**
+
+Reported near item-loss (thanks Bizzaro): an ilvl-277 Heroic Epic auto-sold under an Epic cap of 250, because its affix ("Iron Will I") was one already extracted. The "Sell affixes below rank" and "Allow selling affixes you already have" rules were standalone sell signals that ignored the quality rule's ilvl cap, so a high-end item the cap was meant to protect got vendored on the strength of a duplicate affix alone.
+
+- The per-rarity ilvl cap is now a HARD ceiling for every auto-sell path. Above the cap (fixed-cap mode), or above what you have equipped (use-equipped-iLvl mode), an affixed item is KEPT, not sold, even if you own its affix or its rank is below your floor.
+- Only your explicit Sell List or Alt+Right-Click Allow Sell still overrides the cap (user intent wins, as always). When a rarity's rule is disabled or set to sell-all (cap 0), the affix rules behave as before.
+- Applied through one shared gate (`EC_compCache.affixSaleWithinCeiling`) so the vendor decision, the `/ec sellinfo` trace, and the bag tooltip all agree, pinned by a new invariant (Test 117). The trace now spells out "kept - above your sell cap for this rarity" so you see exactly why.
+
+Also: `/ec sellinfo` now prints the addon Version in its header (matching `/ec bugreport`). Help/FAQ updated to describe the cap as a hard ceiling.
+
+**Delete-safety hardening (thanks Serv, in-game testing).** While verifying the cap fix, a worn ring (a saved-equipment-set member and a quest reward with no vendor value) showed a "Will Delete" tag when moved to bags, and could not be added to the Keep List from the menu. Root cause was several gaps in the "auto-mark unsellable affixes" feature and its previews:
+
+- The unsellable-affix auto-mark now protects real gear. It never marks an item that is a saved-set member, currently equipped, a quest item, on your account Sell List, or high item level. On this realm even top-end soulbound gear vendors for nothing, so item level (not vendor value) is the safety signal.
+- The bag tooltip's "Will Delete (unsellable affix)" preview and the real delete logic now share ONE protection gate (`EC_compCache.itemProtectedFromAutoMarkDelete`), so the tooltip can never threaten deletion on an item that would actually be kept. Protected items show "Keep (protected)" instead.
+- Alt+Right-Click always offers the Keep List now. Items with no vendor value (quest rewards) and chance-on-hit / affix-protected items previously hid the Keep row, so you could not protect them from the menu. Keep is always a safe action, so it is always shown.
+- Saved equipment sets are re-synced on every bag scan (not only once at login), so a set you edit mid-session can't slip a member past the guard on a stale cache.
+- Auto-protect equipment sets now defaults ON for new installs, so saved-set items land on the Keep List automatically. Existing settings are untouched. (Set members are protected from deletion regardless of this toggle; it only controls the visible Keep-List stamp and sell protection.)
+
+Pinned by a new invariant (Test 118).
+
+---
+
+
+### v2.57.1
+
+Patch release. Chance-on-hit proc-pairing seed data (confirmed via `/ec captureproc` + in-game verification):
+
+- **Shortsword of Vengeance** paired to the **Judgement** affix and **Black Duskwood Staff** to **Affliction** - both now recognised as known chance-on-hit procs once you have extracted the matching affix.
+- **Joonho's Mercy** marked non-extractable (its Arcane-blast proc has no matching weapon affix), so it stays protected and is never treated as a sellable known proc.
+- **Arcanite Champion** left for autolearn: it is extractable, but the id its proc reports is the vanilla proc-buff spell rather than the affix id, so autolearn captures the correct pairing when you extract it at the Anvil (a hardcoded guess would only mask that).
+
+Seed-data only; no behaviour change unless the experimental "Sell known chance-on-hit procs" toggle is on.
+
+---
+
+
+### v2.57.0
+
+**Sold History is now a real window that records your whole session, not just the last 20 actions.**
+
+The old `/ec history` reused the bug report's 20-entry "recent" rings, so during a real farming session it only ever showed the last handful of sells/deletes. If you needed to know what happened to something an hour ago, it was already gone. This rebuilds it properly.
+
+- **Full-session logging**: the sell and delete logs now hold up to 5000 entries each (was 20), covering an entire session. If a marathon session ever exceeds that, the oldest trim off but the window shows "N earlier entries trimmed" so you always know nothing was silently dropped.
+- **Interactive window** (replacing the plain text dump), modelled on the Loot Log: movable, resizable, newest-first, with **All / Sold / Deleted** filter buttons and a **search box** (matches item name or the sell/delete reason) so a busy list stays readable. A **Copy** button still dumps the current filtered view for a Discord paste, and **Clear** wipes the session log. It refreshes live while open, so you can watch it during a farm.
+- Same three ways in as before: the **Sold History** button on the main panel, `/ec history`, and Alt+Right-Click any bag item.
+- `/ec bugreport` still shows only the newest 20 of each (a tail slice) so reports stay short - it notes the full list is in `/ec history`.
+
+**New file** `EbonClearance_HistoryWindow.lua`. Session-only throughout: everything clears on `/reload` and nothing is saved. Invariants in `tests/test_perf_guardrails.lua` (Test 116).
+
+---
+
+
+### v2.56.0
+
+**Affix protection now survives even if Project Ebonhold moves its affix data.**
+
+EbonClearance learns which affixes you've extracted from Project Ebonhold's runtime data (`_G.ExtractionService`). That was a single point of failure: if a future PE update ever renamed or removed it, affix protection (the purple "Known" / gold "Needed" bag highlighting, "keep affixes I have," "sell affixes I already have") would quietly go blank. This release hardens that.
+
+- **Single swap point.** Every functional read of the learned-affix catalog now goes through one accessor, `EC_compCache.getExtractionCatalog()`. If PE ever renames the global, exactly one line changes instead of five scattered reads.
+- **Spellbook fallback, proven.** The known-affix map was already co-sourced from a spellbook walk (your learned "engrave this affix" spells), so it doesn't actually depend on `ExtractionService`. This release makes that guarantee explicit and testable rather than incidental.
+- **New `/ec affixfallback on|off|status`.** Flip it on to make EbonClearance ignore PE's affix data and rebuild its known-affix map from your spellbook alone, so you can confirm with your own eyes that Known/Needed highlighting and keep/sell rules still work. Flip it off (or `/reload`) to return to normal. Session-only; nothing persists.
+- **No change to normal play.** While `ExtractionService` is present (as it is today), behavior is identical. This is insurance, not a new day-to-day feature.
+
+Diagnostics (`/ec captureproc`, `/ec procdump`, `/ec bugreport`) still read the live global directly, so they always report the true state regardless of the simulate switch.
+
+**Tests**: new suite `tests/test_affix_resilience.lua` (8th suite) pins the accessor routing, the simulate switch, and the spellbook-primary invariant. **Docs**: README slash table, in-game Help/FAQ entry, `docs/ADDON_GUIDE.md`, and the click-to-run Slash Commands list on the main panel.
+
+---
+
+
+### v2.55.1
+
+Patch release.
+
+- **Alt+Right-Click now works on the main bank bag under a host bag UI.** The main bank bag's slot buttons are built from a different stock template than regular bag slots, so their clicks didn't route through the handler the EbonClearance menu hooks. Added a guarded wrap of the bank slot click handler so Alt+Right-Click opens the EbonClearance menu (and Alt+Shift+Right-Click prints the sell trace) on bank items too. Regular bag and numbered bank-bag slots were already covered. Border tints and tooltip annotations already worked everywhere.
+- **Two more chance-on-hit proc entries.** Ironfoe's proc is now paired to the Flurry affix (so it is recognised as a known duplicate once you have extracted Flurry), and Signet of Edward the Odd is marked non-extractable (kept protected, never treated as a known proc). Both are additive seed-data changes.
+
+---
+
+
+### v2.55.0
+
+**Frame-hitch diagnostic: find out if a stutter was EbonClearance, and which part.**
+
+`/ec perf` reports steady-state footprint (memory, CPU, cache sizes) but couldn't answer "what caused that specific stutter?". The new `/ec spike` fills that in.
+
+- **What it does**: a cheap always-on watchdog watches per-frame time. When a single frame runs long enough to be a visible hitch, it records how many milliseconds EbonClearance spent in each of its heavy phases that frame - bag-update flush (loot-delta scan included), vendor cycle, tooltip annotation - and flags the busiest.
+- **`/ec spike`** shows the recent hitches, newest-first, e.g. `[19:37:18] 127 ms hitch - busiest: Bag update (bag 36 / vendor 0 / tooltip 0 ms, 2 FPS)`. It only records hitches EbonClearance actually contributed to, so an empty list right after a stutter is itself the answer: the addon wasn't the cause.
+- **Session-only**: an in-memory bounded ring, cleared on `/reload`, never saved. Phases are timed with `debugprofilestop` (a high-res timer that, unlike CPU profiling, is always available and needs no CVar). The watchdog only reads deltas, so its per-frame cost is a handful of subtractions and it allocates only on an actual spike.
+- `/ec bugreport` now includes a "Recent Frame Hitches" section for the same data.
+
+**Copy windows no longer steal your keyboard.** The copyable popups (`/ec spike`, `/ec history`, `/ec bugreport`, Sell Info) used to grab keyboard focus on open, so a multi-line text box swallowed your movement keys and you couldn't play with the window up. They now open unfocused and are safe to leave open. To copy: click the text (it selects everything), then Ctrl+C. Escape or a click elsewhere hands input back to the game.
+
+**Slash list**: `/ec history` (added in v2.54.0) and `/ec spike` now appear in the Main panel's click-to-run Slash Commands list.
+
+**Docs**: README slash table, in-game Help/FAQ entry, `docs/ADDON_GUIDE.md` slash list, and a new perf-guardrail invariant (Test 115) in `tests/test_perf_guardrails.lua`.
+
+---
+
+
+### v2.54.0
+
+**Sold History: see exactly what EbonClearance sold or deleted this session, and why.**
+
+`/ec sellinfo` has always traced why a single item in your bags would sell, but there was no running record of what the addon actually did after it acted. Sold History fills that gap with a copyable, newest-first list of every sell and delete this login, each line spelling out the rule that fired in plain English.
+
+- **What it shows**: `[time] Sold 3x Item Name - <why>` / `[time] Deleted 1x Item Name - <why>`. The "why" is written out fully (the history window has more room than a tooltip), for example "On your account-wide Sell List (shared across all your characters).", "A profession recipe this character has already learned - Sell Known Recipes vendored the duplicate.", or "Matched your Green auto-sell rule: its item level was below what you have equipped in that slot (BoE only)."
+- **The reason is the true one**. It is built from the exact winning signal `EC_IsSellable` recorded at decision time, so the explanation can never drift from the real sell logic or from `/ec sellinfo`.
+- **Three ways in**: a red **Sold History** button on the main panel (below Current Rules), the `/ec history` slash command, or **Alt+Right-Click any bag item -> Sold History**.
+- **Session-only**. The list lives in memory, clears on `/reload`, and is never saved - no growing database or file.
+
+**Alt+Right-Click menu dividers.** The item menu now groups its rows into three sections separated by dashed dividers - list/allow actions, then Sell Info / Sold History, then Cancel - so the longer menu is easier to scan. Dividers are non-interactive and never render as a leading or doubled line when rows above them are hidden.
+
+**Under the hood**: the existing v2.51.0 recent-sold / recent-deleted session rings gained an optional `reason` field (additive, older call sites keep their sensible defaults), a new `EC_compCache.sellReasonForSignal` helper turns the recorded signal into the plain-English line, and `NS.ShowSessionHistory` renders the merged list through the shared copy window. `/ec bugreport` now includes the reason on each recent-sold / recent-deleted line.
+
+**Docs**: README slash-command table + Alt+Right-Click bullet, in-game Help/FAQ entry, and `docs/ADDON_GUIDE.md` slash list all updated.
+
+---
+
+
+### v2.53.0
+
+**Chance-on-hit proc pairings can now propagate anonymously across a guild via `NS.Comms`.**
+
+Background: `ADB.chanceProcConfirmedItems` is the account-wide catalog of `itemID -> {spellID, family, item}` pairings EC has learned this account via `LEARNED_SPELL_IN_TAB` autolearn (v2.49.1) or the seed catalog. Pre-v2.53.0 every character on every account had to rediscover pairings independently - a guildmate who already extracted "Vulnerability V of Item X" had knowledge the local player could benefit from immediately, but no way to share it.
+
+**New file: `EbonClearance_ProcShare.lua`** (a third `NS.Comms` consumer, modelled on `EbonClearance_GuildShare.lua`).
+
+- **Message pair**: `PREQ` (broadcast request) + `PDAT` (whisper reply). Same shape as `GREQ`/`GDAT`.
+- **Payload**: `pairs:id~spell~family~item;id~spell~family~item;...`. Single section, 240-byte cap, trimmed by oldest `learnedAt` first if oversized. Delimiter-unsafe strings (contain `~ ; | \t`) blank out that field.
+- **Opt-in gate**: `EbonClearanceDB.shareChanceProcs` (per-character, default `false`). Seeded in `EnsureDB`.
+- **Anonymity**: `PDAT` handler ignores the sender arg (`_`) entirely; the merge writes to `ADB.chanceProcConfirmedItems` without any per-contributor attribution. Unlike `GuildShare`, there is no optional "name:" section - pairing knowledge is a fact, not an achievement.
+- **Merge policy**: local-wins. A received pair is written only if the local `ADB.chanceProcConfirmedItems[itemID]` is `nil`, so a corrupt sender cannot overwrite a good local record.
+- **Auto-fire at login**: 6 seconds after `PLAYER_LOGIN`, opt-in players broadcast a `PREQ`. Own 30-second throttle inside `NS.ProcShare.RequestNow()` prevents spam.
+- **Explicit refresh**: a `Refresh chance-on-hit knowledge from guild` button on the Guild Panel calls the same `NS.ProcShare.RequestNow()`.
+- **Diagnostic**: `NS.ProcShare.InjectTestPeers()` merges three high-range fake IDs through the real merge path so the pipeline can be exercised without a live guildmate.
+
+**Bug report addition**: new section `--- Proc Pairings Shared This Session ---` after Silent Refusals. Dumps `NS.recentProcShareMerges` (session ring buffer, last 20 entries, each with itemID, itemName, spellID, family, direction=`in`/`out`, timestamp).
+
+**Watched-toggle diff-since-login**: `shareGuildData`, `shareGuildName`, `shareChanceProcs` added to `EC_TOGGLE_WATCH_LIST`.
+
+**Docs**: `CLAUDE.md` file count bumped 32 -> 33, seventh test suite entry added; `EbonClearance.toc` load order updated (ProcShare loads right after GuildShare, both after Events + Comms).
+
+**Tests**: new suite `tests/test_procshare.lua` mirrors `test_guildshare.lua` - encode/decode roundtrip, cap enforcement, local-wins merge policy, delimiter-unsafe skipping, transport handler behaviour (opt-in ON/OFF -> 0 or 1 `PDAT` whisper, self-skip -> 0 whispers, sender name never stored), plus static-pattern checks (uses `NS.Comms`, registers `"PREQ"`/`"PDAT"`, no `RegisterAddonMessagePrefix`, no `GROUP_ROSTER_UPDATE`, panel writes `shareChanceProcs` + binds Refresh button, Events.lua fires the delayed `RequestNow`).
+
+**Ship notes**: additive schema (`EbonClearanceDB.shareChanceProcs = false`). Downgrade-safe - old client with the field simply ignores it. No changes to the underlying autolearn pipeline; `ADB.chanceProcConfirmedItems` is still writable by both the local autolearn and by inbound `PDAT` merges (local-wins prevents mutual overwrite).
+
+---
+
+
+### v2.52.0
+
+**Affix highlight rework: Known vs Needed split now honest + rank VI supported.**
+
+Reported by Serv against `Netherweave Pants of Relentless Crits VI` and confirmed by observation: the v2.51.3 preview shipped a `Known Affix items` label but the underlying category still fired on ANY affix, so the label lied. This release makes the category names accurate.
+
+**Semantic split** (`EbonClearance_BagDisplay.lua` `bagSlotWillSellCategory`):
+
+- **`affix` (Known Affix items, purple)** now fires ONLY when the player owns the affix at rank/family/description. Uses the same `EC_compCache.playerOwnsAffix` predicate the tooltip's `statusTag = "affixknown"` branch computes. Existing users' highlight setting stays exactly as it was; only the firing predicate narrowed.
+- **`affixneeded` (Needed Affix items, gold)** is new. Fires when the item carries a random affix the player does NOT own - the extraction-target case. Complementary to `affix`. Mirrors the tooltip's `statusTag = "affixneeded"` branch. Default OFF (opt-in like Keep + Known Affix).
+- **Panel row** in `EbonClearance_ItemHighlightingPanel.lua` also carries this release's rename: the affix row previously labelled `Random affix items (purple)` now reads `Known Affix items (purple)`, and a new `Needed Affix items (gold)` row appears right below it. Panel reads as a natural pair.
+
+**`describeSellability` trace parity**: the affix-protection step at `EbonClearance_BagDisplay.lua` used to emit a generic `Kept - Rare/Epic affix protection`. Now splits by ownership:
+
+- **Known**: `Kept - affix known (Rare/Epic affix protection). Tip: turn off 'Protect Affixed Rare Items' ...`
+- **Needed**: `Kept - affix needed (Rare/Epic affix you haven't extracted yet). Tip: extract at the Anvil to learn it, or ...`
+
+Trace text now matches the tooltip's `Keep (affix rank known)` vs `Keep (affix rank needed)` split.
+
+**Rank VI extension** (Serv note during v2.51.2): Project Ebonhold extended affix ranks to VI (6). Changes:
+
+- **Protection panel slider** (`EbonClearance_ProtectionPanel.lua`) - "Sell affixes below rank" widened from max 5 to max 6.
+- **Quickstart Q8b `affixRankFloor`** - new `belowVI` option added, plus the reverse-mapping `snapshotAnswersFromDB` updated to recognise rank 6. Existing radio labels updated from `keep III-V` / `keep IV-V` / `keep only V` to `keep III-VI` / `keep IV-VI` / `keep V-VI` / new `Sell ranks I-V (keep only VI)`.
+- **Roman numeral parsing** - the existing `romanToInt` in `EbonClearance_Protection.lua` already handles multi-char (`VI` = V + I via the standard algorithm), no changes needed.
+- **`EnsureDB`'s `affixMinSellRank` clamp** was already unbounded above, so no schema migration is required. Existing saves with rank 6 pass through.
+
+**Tests**: 110q (semantic split), 110r (rank VI), 110s (trace parity), 88i updated for the renamed local.
+
+**Ship notes**: this release also carries the row-label rename (`Random affix items` -> `Known Affix items`) that was prepped as v2.51.3 in-tree but never tagged - the label + the narrowing land together so the label becomes accurate the moment the release lands, rather than lying in between tags.
+
+**Downgrade safety**: additive schema (`DB.sellBorderCategories.affixneeded`), opt-in default off. Existing users see no changed behaviour on the `affix` row unless they had it enabled AND owned the affix vs didn't - in which case the highlight would stop firing on unknown-affix items (which is now the intended semantic). A one-time enable of `Needed Affix items` gives them the complementary tint.
+
+---
+
+
+### v2.51.2
+
+**Bug fix: adding a learnt recipe to the Sell List with `Protect all tomes` on made it silently refuse to sell.**
+
+Reported by Serv against `Pattern: Mooncloth Leggings` (id=14497, Rare, learnt). Player added to the Sell List, expected it to sell at the next vendor visit, but `/ec sellinfo` showed `WON'T SELL - protected` with the trace step `Kept - 'protect all tomes' is on`.
+
+**Root cause**: the tome-protection HARD veto at `EbonClearance_Events.lua:5348` was a **two-key gate** - required BOTH Sell List entry AND Allow Sell (Alt+Right-Click) to release. The design comment described this as intentional, but it was inconsistent with the chance-on-hit and affix protections (both v2.20.1) that already treat Sell List membership as sufficient explicit intent.
+
+**Fix**: narrow the tome-veto condition to fire only on `qualityPass` (auto-rule sweep signal), not `whitelistPass` (explicit Sell List entry). Now consistent across all three safety-net protections: Sell List releases each of them; Allow Sell exists as a per-item override for players not using lists; the auto-rule sweep is still gated so a tome that falls into a per-quality rule range without user intent stays protected.
+
+Applied to all three parity sites (EC-TRAP: they must stay in lockstep):
+- **`EC_IsSellable`** (`EbonClearance_Events.lua:5348`) - the vendor decision.
+- **`describeSellability`** (`EbonClearance_BagDisplay.lua`) - the `/ec sellinfo` trace mirror.
+- **`EC_AnnotateTooltip`** (`EbonClearance_Tooltip.lua`) - the bag tooltip mirror. Added an `onSellList` guard so the Sell List → `Will Sell` label at line 175 is no longer overwritten by the tome block at line 911.
+
+Also updated the trace hint on the tome-rejection branch: was `Tip: turn off 'Protect all tomes' ... or Alt+Right-Click -> Allow Sell`; now `Tip: add this item to the Sell List, turn off 'Protect all tomes' ... or Alt+Right-Click -> Allow Sell`. Three ways out instead of two.
+
+**Risk / mitigation**: any player who has a tome on Sell List by mistake AND `Protect all tomes` on will now see it sell at the next vendor visit (was previously silently kept). Mitigation: recommend a one-time Sell List audit after upgrade. The `Protect all tomes` toggle is the aggressive default, catching every unlisted tome; the semantic change only affects explicitly-listed items.
+
+Test at `tests/test_perf_guardrails.lua` "EC_IsSellable tome block gates on qualityPass alone" pins the new condition and forbids regression.
+
+Downgrade-safe to v2.51.1.
+
+---
+
+
+### v2.51.1
+
+**Quickstart expansion + typo fix in the v2.51.0 diagnostic hook.**
+
+Three changes off a Quickstart audit + one small self-report.
+
+**Q9b `sellRecipes` expanded from yes/no to four options.** The Quickstart's yes-answer defaulted `DB.sellKnownRecipeBindFilter[1..4]` to `"any"` silently, which was the class of bug that hit `Plans: Ragesteel Breastplate` (v2.50.4) and `Design: Shining Forest Emerald` (v2.50.5) - the Merchant panel's per-quality bind filter was invisible to the Quickstart. New answers set all four qualities explicitly:
+
+- **No, keep my learned recipes** (default)
+- **Yes, all recipes (any bind type)**
+- **Yes, but only BoE recipes** (safer - keeps soulbound recipes for alts)
+- **Yes, but only BoP recipes**
+
+Preset seeding: `farmer` migrates from `yes` to `boeOnly` (matches the preset's description "sells Rares too - BoE only"); `power` migrates to `all`.
+
+**New Q13b `deleteMode`: delete-aggressiveness follow-up.** Q13 was a binary master toggle for `enableDeletion` but the two aggressive flavours (`autoDeleteOnPickup` + `autoDeleteGreyOnLoot`) were panel-only. A Quickstart player answering yes to Q13 could expect immediate destruction and be confused when items linger. New Q13b:
+
+- **Only when I visit a vendor** (safest, default)
+- **Also on pickup** (destroys items as they enter my bags)
+- **Also grey items on loot** (max aggressive - never lets grey junk hit my bags)
+
+Preset seeding: `recommended` / `cautious` / `farmer` = `vendorOnly`; `power` = `onPickup`.
+
+**v2.51.0 diagnostic-hook typo caught.** `EC_TOGGLE_WATCH_LIST` had `"repairViaGuildBank"` (0 hits in the codebase) instead of `"repairUseGuildBank"` (13 hits). Silent diagnostic hole - the toggle-diff-since-login snapshot could never detect a change to the guild-bank repair setting. Fixed; Test 110L pins it.
+
+Tests 110L / 110m / 110n cover all three changes. All 6 test suites stay at green.
+
+Downgrade-safe to v2.51.0. Existing Quickstart answers still resolve via `snapshotAnswersFromDB`; the sellRecipes reverse-mapping reads the shared bind filter and falls back to `all` for mixed states.
+
+---
+
+
+### v2.51.0
+
+**Diagnostic-hooks release. `/ec bugreport` gains six new sections + an at-a-glance Issue Summary; Sell Info popup leads with the verdict; resizable copy frame; every rejection reason names the toggle to flip.**
+
+The goal of this release is to make future user reports diagnose faster - both for me (the maintainer) reading a pasted `/ec bugreport`, and for the player reading their own Sell Info trace. Every hook below is a "why didn't this fire?" or "why didn't this stick?" answer that previously required back-and-forth.
+
+**New session-scoped ring buffers (all surface in `/ec bugreport`):**
+
+- **Silent Refusals.** `EC_AddItemToList`'s cross-list conflict guard refuses adds silently when called with `quiet=true` (the auto-protect sync path). Pre-fix, a Keep-Add refused because the item was already on Delete List returned `false` and left no trail - this was the root cause of the v2.50.2 shirt-loss bug. The ring buffer captures the last 15 silent refusals with itemID, target list, conflict list, caller label, timestamp.
+- **Recent Sold + Recent Deleted.** Last 20 of each, tagged with the flow (`manual` / `worker` for sold, `auto` / `vendor` for deleted) so "which item did EC actually sell just now?" has an answer beyond lifetime totals.
+
+**New diagnostic snapshots + timestamps:**
+
+- **Toggles Changed This Session.** Watched-toggle snapshot taken at `PLAYER_LOGIN` after `EnsureDB` seeds defaults; diff-since-login runs at `/ec bugreport` time. Surfaces `enableDeletion: true -> false` (or similar) for the 23 watched toggles. No mutation hooks needed, no metatable proxy invasiveness.
+- **Last Event Times.** Eight stamp sites (BAG_UPDATE, EQUIPMENT_SETS_CHANGED, MERCHANT_SHOW / _CLOSED, StartRun, runAutoMarkAffixDupes, runAutoMarkResilience, runAutoDeleteOnPickup). A `(never)` reading is diagnostic on its own - subsystem hasn't run despite being enabled.
+- **Cache Stats.** Sizes of `bindCache` (broken out by boe/bop/any counts), `itemAffixLookupCache`, `bagSlotAffixData`, `chanceOnHitCache`, `processCache`, `equipmentSetIDs`. Anomalies like a 500-entry `bindCache` with 400 `any` entries are a scan-time red flag.
+
+**Bug report Issue Summary at the top:**
+
+Rule-based flags surfaced before Live State so a reviewer sees "here's what looks off" first. Fires on destructive toggles being ON, cross-list conflicts > 0, silent refusals > 0, `enableDeletion` OFF but Delete List populated, Delete List > 200 items, conflicting delete-addon detected, watched toggles diff > 0. Every flag is a hypothesis, not a diagnosis - the sections below carry the raw data to confirm.
+
+**Delete List Preview now shows item names.** The v2.50.3 spec said "names when available"; the fallback fired for every row because `GetItemInfo` returns nil at report-build time for items not seen this session. New `EC_ResolveItemLabel` helper primes the client cache via `NS.scanTooltip:SetHyperlink` then retries. Items with data in the client's session cache resolve to their full colored link; items the client has never seen fall back to `item:ID`.
+
+**Loaded Addons now partitions into Potentially Relevant + Other.** 53 addons with zero triage was hard to skim. Substring match on `bag / vendor / sell / loot / auction / mail / tooltip / bug / err / prof / craft / ...` promotes the addons most likely to interact with EC's surfaces to a highlighted section; the rest goes under Other.
+
+**Sell Info popup - verdict header + config hints:**
+
+- **Verdict at the top, not the bottom.** Header block leads with character + realm, date/timestamp, bag/slot, item link, and a colored `WILL SELL` / `WILL DELETE` / `WON'T SELL` verdict. Reader sees the answer without scrolling; the `--- Full trace ---` follows.
+- **Config hints on the common rejection branches.** Tome protection, Rare/Epic affix protection, chance-on-hit protection, and recipe bind-filter mismatches now include an inline `Tip: ...` phrase naming the panel + toggle the player can flip (or the Alt+Right-Click Allow Sell escape hatch). Fewer round trips: user reads the trace and knows exactly what to change.
+
+**Shared copy frame is now resizable.** Bottom-right resize grip (using Blizzard's `UI-ChatIM-SizeGrabber` textures). Default size bumped from 460x400 to 560x400 so the wider bug-report lines (loaded-addon rows, cache-stats lines, delete-list preview with resolved names) don't wrap. `OnSizeChanged` rebinds the edit box width so growing the frame grows the readable area. Applies to all callers of the shared frame - `/ec bugreport`, `/ec sellinfo`, `/ec rules`, `/ec affixdebug dump`, `/ec captureproc dump`.
+
+**Test additions:** 11 new pattern checks (Test 110a-k) pin every hook, every new section, and the shared-frame resize wiring. All 6 test suites stay at green.
+
+**Downgrade safety:** all new state is session-local (ring buffers, snapshots, timestamps). No schema changes. Downgrade to v2.50.5 loses only the diagnostic hooks, no data.
+
+---
+
+
+### v2.50.5
+
+**Sell Info opens a copyable popup + the recipe bind-filter reject label now tells the truth.**
+
+Two fixes to the sellability-trace surface, both from Serv reports against Design: Shining Forest Emerald (id=41782, Rare, `Already known`, no bind line on the tooltip).
+
+**Popup for `/ec sellinfo` + Alt+Right-Click -> Sell Info.** The trace was chat-only, so the 10-12 line trace scrolled off in busy channels before the player could screenshot or copy it. Now both entry points route through the shared `EC_ShowCopyFrame` popup (same one `/ec bugreport`, `/ec affixdebug dump`, `/ec captureproc dump`, `/ec rules` use) - Ctrl+A / Ctrl+C to paste the trace into Discord or a GitHub issue. Chat prints stay as a defensive fallback if the copy-frame helper isn't loaded (impossible under the current `.toc` order but the branch is there in case a future refactor separates BugReport from the addon).
+
+**Reject label now names the actual detected bind, not a hardcoded string.** v2.50.4's reject-branch label was hardcoded to `recipe is bind-on-pickup, not eligible` regardless of what was actually detected. When Design: Shining Forest Emerald read as `any` (no bind line on the tooltip - a data quirk on this server) and the Blue-recipe filter was set to `bop`, the trace said the recipe was BoP when it wasn't. The label now:
+
+- Names both the filter value AND the detected bind (`filter is 'bop' and this recipe binds as 'boe'`).
+- Has a distinct `no bind line` branch for the `any` case (`filter is 'bop' and this recipe has no bind line (reads as 'any' - only matches filter 'any')`) so the player understands why an unbound recipe only matches a filter of `any`.
+
+Tests 107j (label honesty) + 107k (popup routing) pin both. No schema change, no behaviour change to the sell decision itself - only the trace surface.
+
+Downgrade-safe to v2.50.4.
+
+---
+
+
+### v2.50.4
+
+**Bug fix: soulbound recipes with a mismatched bind-filter setting showed "Will Sell (known recipe)" but the vendor cycle refused.**
+
+Reported by Serv against `Plans: Ragesteel Breastplate` (id=23613, Rare, soulbound, learned). The player's Blue-recipe bind-filter was set to `boe`, so the vendor cycle correctly refused the soulbound plans - but the `/ec sellinfo` trace and the bag tooltip both showed `Will Sell (known recipe)` because both mirrors were missing the bind-filter check.
+
+`EC_IsSellable`'s `recipePass` at `EbonClearance_Events.lua` ~line 5100 already honoured `DB.sellKnownRecipeBindFilter` (added in v2.47.1). The two mirrors did not:
+
+- **`describeSellability` trace** (`EbonClearance_BagDisplay.lua`) now emits `known recipe but this quality's bind filter is 'boe' - recipe is bind-on-pickup, not eligible` (or similar) when the filter rejects the recipe's bind type. Uses `EC_compCache.getBindType(bag, slot)` to match the sell-decision code path.
+- **`recipeSellable` tooltip check** (`EbonClearance_Tooltip.lua`) now runs the same filter via `EC_compCache.getBindTypeFromTooltip(tooltip, id)` (the live-tooltip variant, since the tooltip surface doesn't have a bag/slot pair). Filter-rejected recipes no longer show `Will Sell (known recipe)`.
+
+Test 107i pins the mirrored gate on both files. No schema or behaviour change to the sell decision itself - only the trace / tooltip surfaces now agree with what the vendor cycle actually does.
+
+Downgrade-safe to v2.50.3.
+
+---
+
+
+### v2.50.3
+
+**Bug reports pack more diagnostic detail.** Motivated by Bizzaro's v2.50.1 report where the tooltip said "Will Delete" but no destruction actually happened - the pre-v2.50.3 bugreport didn't surface enough state to tell whether the item was queued for a merchant visit, auto-delete-on-pickup was off, or something else was blocking. This release closes the gap.
+
+- **Four destructive/protection toggles added to the Settings dump.** `Auto-Delete on Pickup`, `Auto-Delete Grey on Loot`, `Announce Auto-Delete in Chat`, and `Warn about Conflicting Addons` are now surfaced. Any report about unexpected destruction (or unexpectedly no destruction) is now diagnosable at a glance without asking the user to re-check panel toggles.
+- **Equipment-set diagnostic counters added to Runtime State.** `Equipment Sets Saved` (from the Blizzard Equipment Manager) + `Equipment-Set Members Cached` (from v2.50.2's `EC_compCache.equipmentSetIDs` rescue cache). A `Saved > 0` with `Cached = 0` immediately flags that the `EQUIPMENT_SETS_CHANGED` handler didn't fire this session and the v2.50.2 Layer 2 rescue is degraded.
+- **New `--- Delete List Preview ---` section.** First 15 itemIDs on the Delete List with resolved names, plus a `Cross-list conflicts (also on Keep List)` count. Legacy pre-`EC_FindAddConflict` DBs could produce cross-list conflicts; v2.50.2's destruction-side rescue makes them harmless but a non-zero count still points the user at `/ec clean apply` for cleanup.
+- **New `--- Recent Auto-Mark Events ---` section.** Session-scoped ring buffer of the last 15 items `runAutoMarkAffixDupes` or `runAutoMarkResilience` wrote to `DB.deleteList`, with itemID, name, reason (`affix` or `resilience`), and timestamp. Directly answers "did EC mark my item, and when / why?" without needing the user's chat log to survive as evidence. Session-local; wiped on `/reload`. Ring shifts oldest out at 15 entries.
+
+Tests 107g + 107h pin the new bugreport surface + ring buffer contract.
+
+No schema changes. All new state is session-local. Downgrade-safe to v2.50.2.
+
+---
+
+
+### v2.50.2
+
+**Bug fix: soulbound shirts with known affixes could be silently auto-deleted despite being in equipment sets and manually added to the Keep List.**
+
+Reported by Bizzaro on behalf of Stickybackpack: an Epic Purple Shirt of Ironhide IV got destroyed by `Auto-mark unsellable affixes for deletion` when the player swapped it for a Rocket Pack. The shirt was a member of three saved equipment sets AND had been manually added to the Keep List via the context menu; both protections were silently ignored. Root cause was two overlapping bugs; the fix is a three-layer defence plus a recovery hint.
+
+- **Slot 4 (shirt) is now covered by Auto-Add Equipped.** `protectEquipSlot` used to skip slot 4 as "cosmetic-only". Project Ebonhold puts affix stat rolls onto shirts, so this assumption is wrong on this server; the skip is dropped. Wearing an affix shirt now auto-Keeps it with tag `equipped`, matching every other worn slot. Slot 19 (tabard) stays skipped - no evidence PE affixes tabards.
+- **Equipment-set membership is honoured by the auto-mark scan.** A new session-scoped `EC_compCache.equipmentSetIDs` cache is populated inside `syncEquipmentSets` and rebuilt on `EQUIPMENT_SETS_CHANGED` regardless of the `Auto-Protect Equipment Sets` toggle. `runAutoMarkAffixDupes` consults the cache so items in any saved equipment set are never auto-marked, even if the user has the automatic Keep-List stamping opt-out or the stamp was silently refused by the cross-intent conflict guard.
+- **`deleteListSlotEligible` rescues at destruction time.** The destruction gate now vetoes when the item is on Keep List (character or account) OR currently equipped, in addition to the existing affix gate. Any protection signal that arrives after the auto-mark write rescues the item at the last moment. Matches the `blacklist > deleteList` precedence already documented for `/ec clean`.
+- **Recovery hint on both auto-mark chat messages.** `Marked for delete X - affix you can't sell (no vendor value).` and `Marked for deletion (Resilience, unsellable): X` both now suffix with `Add to Keep List (Alt+Right-Click on the bag slot) to save it.` so a player who missed the moment of destruction still has a path back the next time they see the mark line.
+
+Tests 102e (extended) + 102h/i/j/k pin all four layers.
+
+**Semantic shift risks (documented so downgrade-testers aren't surprised):**
+
+- Users who manually added a **currently-equipped** item to the Delete List expecting delete-on-unequip now see the destruction deferred by one BAG_UPDATE tick (it still deletes after the item leaves the equipment slot). Not a break; a small delay.
+- Legacy DBs with **cross-list conflicts** (an itemID on both Delete List and Keep List) - which pre-`EC_FindAddConflict` versions could produce - now honour the Keep List at destruction time. Same behaviour as running `/ec clean apply`. No user data lost; conflicts still surface via the `/ec clean` reporter.
+
+No schema changes. All new state is session-local (`EC_compCache.equipmentSetIDs`). Downgrade-safe to v2.50.1.
+
+---
+
+
+### v2.50.1
+
+**Nine more chance-on-hit weapon pairings from a fresh Anvil pass.**
+
+Data-only patch. Extends the in-code `Sell known chance-on-hit procs` coverage without any new logic or settings.
+
+- **`EC_CHANCE_PROC_CONFIRMED_ITEMS` grew from 8 to 14 rows** (six new pairings). Verdant Keeper's Aim -> Keeper's Sting, Julie's Dagger -> Julie's Blessing, Thrash Blade -> Flurry, Deathblow -> Maiming, Diabolic Skiver -> Maiming, Winter's Bite -> Glaciation. Diabolic Skiver's pairing was ground-truth confirmed by the Anvil showing "You already know this affix"; the others match unique proc-text phrasings against the same learned-affix catalog.
+- **`EC_CHANCE_PROC_NEVER_EXTRACTABLE` grew from 7 to 10 rows** (three new safety-net entries). Dazzling Longsword, Phantom Blade, and The Hand of Antu'sul all had their Extract buttons greyed out at the Anvil - vanilla WoW procs PE has not ported to the 700xxx family. Adding them to the hard-set means a future autolearn misfire (or a keyword collision) can't ever auto-release them.
+
+Downgrade-safe (data-only additions). Anyone with the v2.49.1 autolearn still catches items outside these two sets on real extraction, so real-world coverage keeps growing beyond the shipped map.
+
+---
+
+
+### v2.50.0
+
+**Auto-delete grey drops, a warning when another delete addon is running, and a settings reshuffle: "Protection Settings" is now "Keep Settings".**
+
+- **`Auto-delete grey items on loot`** (Delete Settings, opt-in, default off). When on, grey (quality 0) items with a positive sell price are destroyed the moment they land in your bags. For players who prefer bag space over the copper a grey would vendor. Gates: master delete switch on, quality == 0, sellPrice > 0, not a quest item, not equipped, and not on any Keep List / auto-blacklist / Delete List. Merchant-open pauses the scan so vendor copper wins when a vendor is about to be visited.
+- **`Warn about conflicting addons`** (main EbonClearance panel, opt-out, default on). A popup at login when EC's delete path is active AND a conflicting bag-management addon is detected running alongside EC. It's a popup rather than a chat line so it can't be scrolled past, and it names the detected addon so you know exactly what to turn off. Silence via the toggle once acknowledged.
+- **Keep Settings panel.** The panel formerly called "Protection Settings" is renamed **Keep Settings** and repositioned in the sidebar to sit directly under **Keep List** - so Keep List + Keep Settings mirror Delete List + Delete Settings. All its "Keep ..." toggles are unchanged (equipped gear, upgrades, equipment sets, affixed items, chance-on-hit, tomes). The internal panel id is unchanged, so existing help links and deep-links keep working.
+- **`Sell recipes you already know` moves to Merchant Settings.** It's a sell rule, so it now lives with the other merchant sell rules (per-rarity checkboxes + bind-type dropdowns come with it). Behaviour is identical, including that "Keep them even after you learn them" (tome protection, still in Keep Settings) wins over it.
+- **`/ec bugreport` capability flag.** New "Third-party auto-delete addon detected: yes/no" line under Environment Capabilities.
+- **Additive schema.** `DB.autoDeleteGreyOnLoot` (false) and `DB.warnConflictingAddons` (true) initialised via EnsureDB with type-guarded nil-defaults. No settings lost; downgrade-safe.
+
+Tests 104c-e + 113a-h pin the new invariants (grey scan gates, conflict detection + popup, the panel rename, and the recipe relocation).
+
+---
+
+
+### v2.49.1
+
+**Autolearn: chance-on-hit proc pairings from your extractions.**
+
+The v2.49.0 experimental toggle `Sell known chance-on-hit procs` ships with an in-code map of 8 confirmed weapon-to-spell pairings. v2.49.1 grows that map automatically: whenever you extract a chance-on-hit proc at the PE Anvil, the addon spots the `LEARNED_SPELL_IN_TAB` event, correlates it with the weapon that just left your bags (5-second window), and writes the itemID -> spellID pairing into your account's `ADB.chanceProcConfirmedItems`. Every future drop of the same weapon then auto-sells when the toggle is on (subject to the usual sell rules).
+
+- **Correlation window: 5 seconds.** `LEARNED_SPELL_IN_TAB` fires within 1-2 seconds of an Anvil click; the buffer holds chance-on-hit bag removals for 5 seconds so the correlation succeeds even under moderate lag.
+- **Sanity gates.** SpellIDs outside the PE weapon-proc range `[700000, 800000)` are ignored; catalog records without `weaponOnly = true` are ignored; itemIDs in `EC_CHANCE_PROC_NEVER_EXTRACTABLE` are never autolearned even if a bag removal happens to overlap.
+- **Ambiguous events.** If zero OR two+ chance-on-hit items disappeared in the window, the addon writes the event details to `ADB.chanceProcAmbiguous` silently. Review with `/ec autolearnpeek`. No auto-promotion.
+- **Chat toast per autolearn.** `|cff66ccff[EbonClearance]|r Learned proc pairing: <ItemName> extracts to <SpellName>. Sell known chance-on-hit procs now covers this item.` Localised.
+- **New slash command: `/ec autolearnsim <itemID> <spellID>`.** Diagnostic harness. Pre-populates the ring buffer with a synthetic entry (item must be in bags for the proc-line read) and fires the correlation code as if `LEARNED_SPELL_IN_TAB` had just delivered the given spellID. Lets contributors walk the correlation without needing an unlearned proc to test with.
+- **New slash command: `/ec autolearnpeek`.** Read-only copyable dump of author-vetted + autolearned + ambiguous state. Uses the same copy-frame helper as `/ec captureproc` (v2.49.1 exposed `NS.ShowCopyFrame` so out-of-file callers can render dumps).
+- **playerHasExtractedProc priority order** now: `NEVER_EXTRACTABLE` (hard set) -> `EC_CHANCE_PROC_CONFIRMED_ITEMS` (in-code, author-vetted) -> `ADB.chanceProcConfirmedItems` (autolearn) -> keyword-map inference -> catalog check on the resolved spellID.
+- **Additive schema.** `ADB.chanceProcConfirmedItems` and `ADB.chanceProcAmbiguous` initialised as empty tables by `EnsureAccountDB` with nil-defaults. Downgrade-safe.
+
+**Polish bundled: Slash Commands list no longer has gap-toothed rows.**
+
+Every argument-requiring row in the Main panel's Slash Commands list now has a Run button that opens the chat edit box with the command stem prefilled and the cursor at the end, ready for the player to type the remaining args and hit Enter. Applies to `/ec profile save|load|delete <name>`, `/ec minimap on|off|reset`, `/ec scandebug <bag> <slot>`, and `/ec autolearnsim <itemID> <spellID>`. Uses Blizzard's `ChatFrame_OpenChat` helper. Complementary to the direct-execute Run button on argument-less rows; neither replaces the other. Test 107e pins the new `prefill` field.
+
+**Bug fixes bundled:**
+
+- **Recipes with a crafted-item chance-on-hit proc silently refused to sell** despite `Sell Known Recipes` being on. Reported against `Plans: Frost Tiger Blade` (id=3868) and similar. The recipe's tooltip embeds the crafted item's stats, including any `Chance on hit:` line, and `itemHasChanceOnHit`'s tooltip scan classified the recipe as a chance-on-hit weapon - the veto in `EC_IsSellable` then cleared `recipePass`. Fix: both `itemHasChanceOnHit` (bag-slot variant) and `liveTooltipHasChanceOnHit` (live-tooltip variant) now short-circuit `false` when the item is a tome/recipe, since recipes aren't equippable and can't themselves BE chance-on-hit weapons. Test 112a pins both gates.
+- **`itemIsTome` cache-poisoning on early item lookup.** Reported against `Pattern: Big Voodoo Robe` (id=8386) and `Schematic: Large Seaforium Charge` (id=4417) - both known-and-in-bags but neither selling via `Sell Known Recipes`. Root cause: `itemIsTome`'s fast path called `GetItemInfo`, and if the item metadata hadn't arrived from the server yet, `itype` was nil, the slow tooltip scan came up empty (tooltip also unpopulated), and `result=false` got cached into `EC_compCache.tomeCache`. Once cached, no subsequent call retried. Fix: refuse to cache the result when `GetItemInfo` returns a nil name; retry on the next call once metadata arrives. Trace mirror in `describeSellability` also now emits a `Known recipe` step for every gate outcome (instead of only when both `itemIsTome` and `tomeKind` passed), so the failing check is always visible in `/ec sellinfo`.
+
+Tests 107e + 111a-h + 112a pin the new invariants.
+
+---
+
+
+### v2.49.0
+
+**Auto-release chance-on-hit weapons whose proc you've extracted at the Anvil (experimental).**
+
+Mirrors the affix side's v2.23.0 `Allow selling affixes you already have` gate. When you've extracted a weapon's chance-on-hit proc at the Anvil, that item's protection can now be released so the normal sell rules take over. The bridge from item-side proc text to spell-side spell ID is a hand-curated map - this is experimental, and coverage is item-specific.
+
+- **New toggle: `Sell known chance-on-hit procs (experimental)`** in Protection Settings, indented under `Keep items with chance-on-hit procs`. Off by default. When on, chance-on-hit weapons whose proc PE has ported to its 700xxx affix family AND the player has extracted, fall through the protection.
+- **Hand-curated keyword map (`EC_CHANCE_PROC_KEYWORDS`)** in `EbonClearance_Protection.lua` maps distinctive procLine substrings to PE spell IDs. Ships with 10 unique-phrase rows: Thunderfury, Shahram, Julie's Blessing, Frailty, Rending, Vampirism (two phrasings), Vulnerability, Concussion, Execution. The six generic "ranged + `<element>` damage" / bare "`<element>` damage" catch-alls were dropped after Serv reported Dwarven Hand Cannon's "Flaming Cannonball" ranged Fire proc getting flagged as Fire Blast even though the PE Anvil UI still offered extraction. Element-family matches will come back via the v2.49.1 autolearn (`ADB.chanceProcMap`) keyed on the EXACT procLine string, not a generic keyword.
+- **`EC_CHANCE_PROC_NEVER_EXTRACTABLE` set** (7 itemIDs) short-circuits `playerHasExtractedProc` to "not known" BEFORE the keyword map is consulted. Confirmed by Serv against the PE Anvil UI: Frostguard 12797, Dwarven Hand Cannon 2099, Felstriker 12590, Masterwork Stormhammer 12794, Neretzek 21856, Silent Fang 13953, Brain Hacker 1263. These weapons carry vanilla WoW procs with no PE 700xxx equivalent, so the Anvil hides or rejects extraction. Hard-coding the itemIDs makes the safety mechanism resilient to future keyword-map additions and autolearn misfires.
+- **`EC_CHANCE_PROC_CONFIRMED_ITEMS` table** (8 itemID -> spellID overrides) supplies unambiguous ground-truth mappings for weapons whose PE spellID has been directly observed via `/ec captureproc`. Wins over the keyword map. Ships with: Axe of the Deep Woods 811 -> Wilds 700088, Bow of Searing Arrows 2825 -> Fire Blast 700121, Blackblade of Shahram 12592 -> Shahram 700109, Hammer of the Titans 12796 -> Concussion 700078, Annihilator 12798 -> Rending 700081, Alcor's Sunrazor 14555 -> Incineration 700087, Electrified Dagger 19100 -> Wilds 700088, Nightfall 19169 -> Vulnerability 700103. Arcanite Champion 12790 was deferred: no clean PE catalog match for its "on-hit heal + strength" proc. The v2.49.1 autolearn will grow the account-wide `ADB.chanceProcMap` dynamically alongside this stable seed layer.
+- **Weapon-only gate.** `playerHasExtractedProc` checks equipLoc against WEAPON / 2HWEAPON / WEAPONMAINHAND / WEAPONOFFHAND / RANGED / RANGEDRIGHT / THROWN. Trinket / jewelry chance-on-hit items (Hand of Justice, Dragonspine Trophy, etc.) stay under blanket `DB.protectChanceOnHitItems` protection - PE's transferred-proc system is weapons-only.
+- **New tooltip labels.** `Keep (chance-on-hit proc known)` when the proc is extracted but the toggle is off, OR when the toggle is on but the item has no vendor value (soulbound sellPrice=0, e.g. Electrified Dagger - reported by Serv - vendor refuses regardless of the toggle). `Will Sell (chance-on-hit proc known)` when the proc is extracted AND the toggle is on AND the item has a sell price. The pre-v2.49.0 `Keep (chance-on-hit proc)` label still fires for items whose proc isn't extracted (or isn't in the seed map).
+- **`knownProcPass` is a POSITIVE sell signal.** Serv reported (Nightfall test) that the toggle needed to actively sell items whose proc has been extracted, not just release the chance-on-hit veto when other rules wanted the item. `knownProcPass` now sits alongside `qualityPass` / `affixRankPass` / `autoDupePass` / `recipePass` in the positive-signal gate, mirroring the affix side's `DB.affixAllowExactDupes` semantics from v2.44.0. This means the "Sell known chance-on-hit procs" toggle sells the item on the strength of proc-known alone, no Epic quality rule / affix rule / whitelist entry required. The chance-on-hit protection block re-uses the same `knownProcPass` flag as its veto release, so the tooltip and the actual sell decision stay in lockstep.
+- **`/ec sellinfo` trace mirror** shows the release reason with the matched family name (e.g. `chance-on-hit proc known (Frailty), 'Sell known chance-on-hit procs' is on`).
+- **Schema additions (all account-wide):** `ADB.chanceProcMap` (empty; reserved for v2.49.1 autolearn) + `ADB.chanceProcAmbiguous` (empty; reserved for v2.49.1 disambiguation queue). Downgrade-safe.
+
+**Coverage caveats (why it's marked experimental):**
+
+- The seed map is hand-curated. Items whose proc PE has NOT ported to its 700xxx family (Felstriker, Silent Fang, Frostguard's Chilled, Arcanite Champion's Strength of the Champion, Brain Hacker) stay under blanket protection - the map can only match procs PE actually exposes as extractable affixes.
+- New PE procs added after v2.49.0 need a new keyword row until v2.49.1's on-the-fly autolearn ships. In the meantime, use Alt+Right-Click Allow Sell on specific items.
+- If a keyword misfires (an item auto-sells that shouldn't), add it to your Keep List via Alt+Right-Click - the Keep List veto still wins over the chance-on-hit release.
+
+**Test 110a-g** pins the seven contracts: DB default, ADB init, seed map presence, playerHasExtractedProc gate, EC_IsSellable release, tooltip labels, panel checkbox. `/ec captureproc` (v2.48.1) still surfaces every bag chance-on-hit line + every extracted spell + the full PE catalog so the map can keep growing from real player data.
+
+**Polish bundled: Slash Commands section is grouped by heading.**
+
+The Main panel's Slash Commands list was one long flat run of ~26 rows. Now grouped under six thin gold dividers - `Basics` / `Profiles` / `Lists cleanup` / `Windows & reports` / `Diagnostics` / `Language` - so the reader can jump to the section they want without scanning the whole list. Divider colour matches the ListWidget separator so the visual family stays consistent. Locale files pick up 5 new heading keys.
+
+**Bug fix bundled: Merchant Mode "goblin" was bypassed by affix rank / dupe / known-proc sell signals.**
+
+Serv reported that with `Merchant Mode = goblin` (sell only at the Greedy Scavenger), a Windrunner Legguards at a NORMAL merchant sold anyway because `affixRankPass` (rank 2 below the floor of 4) and `autoDupePass` (dupe of a known affix) bypassed the `junkOnly` gate that `qualityPass`, `whitelistPass`, and `recipePass` all honour. At a disallowed merchant only grey junk should sell; the three affix-based signals plus v2.49.0's new `knownProcPass` now all gate on `not junkOnly` so the mode restriction actually holds. Test 110k pins the invariant.
+
+**Bug fix bundled: Loot Log counted unequipped gear as loot.**
+
+Reported by Serv against Bladetwister of Julie's Blessing, which showed in the Loot Log at 100% share after being unequipped from the offhand slot. Root cause: `EC_ScanLootDelta` was watching only bag-item counts, so an item moving from an equipment slot into a bag looked like a positive bag delta. Fixed by snapshotting equipped item IDs across `INVSLOT` 1-19 each scan, diffing against the previous snapshot, and subtracting per-itemID decreases from the raw bag delta before crediting anything as loot. Auto-clear / auto-sell paths still fire off the raw bag scan; only the Loot Log crediting math is changed. Test 110h pins the guard.
+
+Follow-up v2.49.1 will add the on-the-fly autolearn: bag-diff snapshot + `LEARNED_SPELL_IN_TAB` handler that populates `ADB.chanceProcMap` as the player extracts new procs. The infrastructure (ADB fields, tooltip / trace hooks, seed map) is all in place; the timing-sensitive part (bag correlation window) is what still needs in-game validation.
+
+---
+
+
+### v2.48.1
+
+**Chance-on-hit proc groundwork: `/ec captureproc` diagnostic, a protection-gate bug fix reported by Serv, and a `/ec sellinfo` readability pass.**
+
+Three related changes bundled here.
+
+**1. `/ec captureproc` diagnostic for building the future auto-sell translation table.**
+
+Sets up data-gathering for a future feature: automatic release of chance-on-hit weapon procs (Frailty from Stalvan's Reaper, Vampirism from Neretzek, etc.) once you've extracted the proc at the Anvil - the ranked-affix equivalent of v2.45.0's affix auto-sell, but for weapon procs. PE's item-side tooltip text and spell-side text don't share phrasing, so v2.45.0's `normaliseAffixDesc` bridge can't match them. A hand-curated translation table is needed, and this diagnostic collects the raw data.
+
+- **`/ec captureproc`** opens a copyable window with three data sections: every bag item with a chance-on-hit line (item ID + name + verbatim proc text), every 'Allows you to engrave this affix' spell in your spellbook (spell ID + tooltip), and the full `_G.ExtractionService.learnedAffixes` catalog with all fields on all records.
+- **Help / FAQ** gains a "Help build the chance-on-hit auto-sell table" entry.
+- **README** slash-command table adds the new command row.
+- No player-facing behaviour change. Pure data-gathering diagnostic. Test 107a-c pins the surface.
+
+Once enough proc-to-spell pairings are collected, the runtime auto-sell gate ships in v2.49.0.
+
+**2. Bug fix: two related "positive sell signal fires when it shouldn't" bugs.**
+
+Both reported by Serv, both affecting weapon items with affixes.
+
+**(2a) Chance-on-hit protection was bypassed when the sell decision came from an affix or recipe rule instead of the per-quality rule.**
+
+Reported by Serv against Neretzek, The Blood Drinker of Iron Will II - a 2H axe with both an Iron Will II affix (rank 2) AND a Vampirism-family chance-on-hit proc. With `affixMinSellRank = 4` (the user's rank floor) and `affixAllowExactDupes = ON`, the sell decision came from `affixRankPass` (rank 2 below floor) and `autoDupePass` (player already has Iron Will II). The chance-on-hit protection gate only checked `qualityPass`, so it was skipped entirely - the item flagged WILL SELL even though the bag tooltip correctly displayed "Keep (chance-on-hit proc)". `/ec sellinfo` reported `chanceOnHitProtection - n/a` instead of the actual protection.
+
+Root cause: the gate condition was written in v2.20.1 (before `affixRankPass` / `autoDupePass` / `recipePass` existed as positive sell signals). It only narrowed `qualityPass` when the protection fired.
+
+- **Gate condition widened.** Now fires on any of `qualityPass`, `affixRankPass`, `autoDupePass`, `recipePass`. Explicit-intent paths (`whitelistPass` = item on Sell List, `isJunk` = grey trash) stay exempt per v2.20.1's original rule.
+- **Clears all four auto-rule pass signals** when protection applies, so the recheck at the end of `EC_IsSellable` correctly rejects the item.
+- **`/ec sellinfo` trace mirror** in `EbonClearance_BagDisplay.lua` gets the same widening; the trace now agrees with the merchant cycle.
+- Test 109a-c pins the three contracts.
+
+The bug only manifested on items with BOTH a chance-on-hit proc AND some other affix-driven sell signal. Items with only a chance-on-hit proc (no affix) were unaffected. Subtle case; if you noticed anything selling that shouldn't have on affixed weapons, this was probably why.
+
+**(2b) `affixRankPass` and `autoDupePass` fired for items with no vendor value.**
+
+Reported by Serv against Sentinel's Blade of Iron Will II - a soulbound Rare dagger with Iron Will II (rank 2). With `affixMinSellRank = 4` and `affixAllowExactDupes = ON`, both `affixRankPass` and `autoDupePass` fired positive. But the item has `sellPrice = 0` (BoP with no vendor value) - the vendor won't accept it. Tooltip showed "Will Sell (you have this affix)" and `/ec sellinfo` said WILL SELL, but the merchant refused, and the item just sat.
+
+Root cause: both pass signals were computed from affix data alone, without checking `hasSellPrice`. The v2.20.1-era gates never picked up the hasSellPrice check that the v2.5.0-era `qualityPass` has.
+
+- **Both pass signals now gate on `hasSellPrice`** at the top of `EC_IsSellable`. An item with no vendor value can't fire either signal.
+- **Trace mirror.** The trace still surfaces "you own this affix" as a NEGATIVE step when the affix is owned but `hasSellPrice` is false, with a helpful pointer to the `autoMarkAffixDupes` toggle: `"you own this affix, but item has no vendor value (turn on 'Auto-mark unsellable affixes for deletion' to trash it)"`.
+- **Tooltip mirror.** `EC_AnnotateTooltip`'s affix-release block gates the "Will Sell (you have this affix)" / "Will Sell (low-rank affix)" relabels on a `canSell` (positive sellPrice) check. Unsellable items keep their earlier "Keep" label instead of the misleading Will Sell.
+- Test 109d-g pins all four gates + the tooltip guard. Test 92e updated to match the new tooltip gate shape.
+
+For dispose-of-unsellable-affix-dupes use cases, the intended flow is the v2.47.0 `Auto-mark unsellable affixes for deletion` toggle - a separate BAG_UPDATE-driven scan that routes soulbound, no-vendor-value affix dupes to the Delete List. Off by default; turn it on if you want Sentinel's-Blade-like items auto-trashed.
+
+**3. `/ec sellinfo` readability pass.**
+
+The trace had accumulated technical jargon in step names (`chanceOnHitProtection`, `alreadyHaveAffixRule`) and messages (`VETO - chance-on-hit proc detected (downgrades qualityRule veto)`, `n/a (no positive sell signal - affix gate only fires for items the sell rules would otherwise touch; delete-list path is checked separately)`). Rewrites throughout:
+
+- **Step labels** now display as plain English: `Item`, `Vendor accepts it`, `Delete List`, `Grey junk`, `Sell List`, `Quality rule`, `Affix rank floor`, `Affix you already own`, `Known recipe`, `Quest item safety`, `Profession tool safety`, `Currently worn`, `Keep List`, `Affix protection`, `Chance-on-hit protection`, `Tome / recipe protection`. Internal identifiers unchanged; only rendered output changes via a `STEP_LABELS` lookup in `printSellabilityTrace`.
+- **Message rewrites**: `VETO -` prefix consistently becomes `Kept -`. `you have this exact affix (description match)` -> `you already have this exact affix`. Multi-clause `n/a` explanations trimmed to a single line. Allow-Sell references say `"you Allow-Sold this one"` instead of `"manually allow-listed via Alt+Right-Click"`.
+- Presentation-only. No decision-logic change; the trace output for the same item shows the same verdict, just in language a new player can parse.
+- New English keys get empty templates in `_frFR.lua` / `_deDE.lua`.
+
+No schema change. Existing toggles drive the gates as before.
+
+---
+
+
+### v2.48.0
+
+**Help panel style refresh, inspired by BarWarden's cleaner section-header collapse, blue question text, and blue flash-pulse deep-link.**
+
+The Help panel was rewritten to adopt the visual patterns from the sibling BarWarden addon's Help tab, whose interaction feel felt cleaner. Content is unchanged (same 110 FAQ entries, same 7 sections, same panel-jump buttons on 83 entries, same copy-URL rows), the SavedVariables schema is unchanged (`DB.helpSectionsCollapsed`), and the deep-link API is unchanged (`NS.OpenHelpEntry(id)` + `NS.AddHelpIcon` still work exactly as before) - only the renderer + flash implementation change. Existing translations, `[?]` icon call sites, and player collapse-state settings all carry forward untouched.
+
+- **Gold section headers** with `|cffffd870+ Section|r` (collapsed) / `|cffffd870- Section|r` (expanded) instead of the pre-v2.48.0 yellow `|cffffff00[+] Section|r` / `[-]` pattern. Hovering a section header flips its text from gold to white; moving off restores gold.
+- **Light-blue question text** (`|cff4db8ff`) replaces the pre-v2.48.0 yellow. Answer text stays at the default `GameFontHighlightSmall` color.
+- **Blue flash-pulse on deep-link.** Clicking a `[?]` icon anywhere in the settings panels still opens the Help panel and scrolls to the matching entry, but the highlight is now a soft blue Texture pulse behind the entry (using `UIFrameFlash`) instead of the pre-v2.48.0 inline-color text swap. Works regardless of what color the question text uses; doesn't disturb the layout during the pulse.
+- **Two-pass deferred scroll** (0.15s + 0.6s) lands multi-section deep-links reliably. The pre-v2.48.0 single 0.7s pass could land short when several sections were already expanded and the outer scroll range hadn't settled yet.
+- **Viewport-width text reflow.** The wrapped answer text now retracks the live scroll-frame width on every Interface Options resize instead of freezing at a build-time snapshot. Fixes clipping past the chrome's right edge when the Interface Options window is resized by UI-mod packs.
+- **Simpler layout algorithm.** The renderer walks its item list once, accumulating a `y` cursor, with each entry anchored directly to the chrome (no `prevFull` chaining). A hidden entry no longer strands the ones below it. Net file line count is ~1200 (down from 1473).
+
+Retained from the pre-v2.48.0 implementation: search box + client-side filter, per-entry `Open <Panel>` panel-jump buttons, copy-URL rows on the Reporting Bugs section, chrome backdrop (UI-Tooltip-Border edge at edgeSize=12, matching Sell List / Keep List / Delete List / Process Bags / Profiles), and full `L[]` localization on every player-facing string.
+
+Test 83a rewritten to match the new flash pattern (UIFrameFlash on a BACKGROUND Texture instead of inline-color text swap). Test 106a-e added to pin the ported visuals (gold section headers, blue question text, per-entry flash Texture, two-pass scroll timing, viewport-width reflow).
+
+Credit to BarWarden for the pattern.
+
+---
+
+
+### v2.47.2
+
+**Delete List split into two panels + every setting has an explanatory note.**
+
+The Delete List panel had accumulated five checkboxes plus multi-line notes above the actual list, so on smaller Interface Options window sizes the list itself got pushed below the fold. This mirrors the problem the Keep List had before v2.15.0 (which the code comment at line 316 of `EbonClearance_KeepDeletePanels.lua` describes verbatim: "3 checkboxes + 3 multi-line notes stacked above the actual list - dominated it visually").
+
+- **Delete List panel** is now just the list: header, one-line description, add-item hint, list. Matches the Sell List / Keep List / Account Sell List rhythm.
+- **New Delete Settings sub-panel** (sits directly under Delete List in the Interface Options tree) holds the five toggles: Allow items to be deleted, Auto-delete on pickup, Auto-mark PvP gear (Resilience), Auto-mark unsellable affixes, Announce auto-deletions in chat. Same DB fields, same widget names - no schema change, no migration.
+- **Each setting picked up a grey explanatory note underneath it** so the player understands what it does at a glance instead of hunting through the Help FAQ:
+  - `Allow items to be deleted` -> "Master switch. Off = nothing on the Delete List is destroyed, even if the sub-toggles below are on."
+  - `Auto-delete these items the moment they enter your bags` -> "Delete-List items are destroyed the instant they hit your bags. Skips the merchant round-trip; irreversible. Turning this on shows a confirm popup and clears any items already in bags right away."
+  - `Auto-mark PvP gear (Resilience)` -> "PvP gear with 'Resilience' and no vendor value gets added to the Delete List automatically. Still needs 'Allow items to be deleted' above (plus a vendor visit or auto-delete-on-pickup) to actually be destroyed."
+  - `Auto-mark unsellable affixes` -> existing note preserved.
+  - `Announce auto-deletions in chat` -> "One chat line per auto-delete or auto-mark event. Off is fine if the chat is too noisy while farming; your Delete List still tracks every destroyed item."
+- **Delete List panel gets a grey pointer** to the Delete Settings panel (mirroring the Keep List's pointer to Protection Settings from v2.15.0).
+- **Help / FAQ entries** for the four settings (auto-delete on pickup, auto-mark unsellable affixes, auto-mark PvP gear, announce in chat) now open the new Delete Settings panel; the two entries that talk about the list itself (Delete List path, Will Delete label) still open the list panel.
+
+No behaviour change - all toggles work exactly as before, at the exact same paths in `DB.*`. Test 105a-e pins the panel split, widget relocation, per-setting note presence, and reactive-width layout on each note (the notes go through `EC_compCache.setPanelWidth` so they reflow when the Interface Options window is resized, rather than clipping past the right edge at build-time width).
+
+---
+
+
+### v2.47.1
+
+**Per-quality bind-type filter for Sell Known Recipes.**
+
+The Sell Known Recipes rule (v2.46.0) had per-rarity on/off but no bind-type gate, so a "sell known Greens" setting could sweep up BoP crafted patterns the player wanted to keep for alts. v2.47.1 mirrors the v2.10.0 per-rarity bindFilter shape from the quality rules onto Sell Known Recipes.
+
+- **Bind dropdown next to each recipe rarity row** in Protection Settings: Any bind type / BoE only / BoP only. Independent per rarity, so you can sell known Green BoE patterns but keep all BoP ones, etc.
+- **Default "any" everywhere.** Existing users see no behaviour change.
+- Items with no bind line at all read as "any" from `getBindType` (same semantics as the quality-rule path), so reagents masquerading as recipes aren't swept up by a "BoE only" setting.
+- `/ec bugreport` now includes the per-quality bind filter alongside the existing per-quality on/off dump.
+
+Schema is additive and downgrade-safe: `DB.sellKnownRecipeBindFilter` per-character, seeded with `"any"` per quality, value-validated against the three allowed strings. Test 104a-c pins the contracts (EnsureDB seed, predicate gate position, panel dropdown wiring).
+
+Also in this patch:
+
+- **`/ec bugreport` rule summary spells out the sell-mode consequence.** `equipped iLvl` now reads as `equipped iLvl - keeps upgrades`; `no cap` reads as `no cap - sells all`. Players reporting "nothing sells" often turn out to have `useEquippedILvl` on without realising higher-iLvl drops are protected by design; making the mode label self-describing catches that at first glance in the dump.
+
+---
+
+
+### v2.47.0
+
+New option: auto-clear affixed items you can't sell. For players who've collected the affixes they want and keep getting soulbound affix drops that have no vendor value and just clutter the bag. Off by default. Suggested by Broyo.
+
+- **Auto-mark unsellable affixes for deletion (opt-in, default off).** A new toggle on the Delete List panel. When on, a **soulbound** affixed Rare/Epic item with **no vendor value** that EbonClearance would otherwise try to sell is added to your Delete List automatically (one chat line per item), then deleted at a vendor or instantly with auto-delete-on-pickup. Two kinds qualify: **exact-rank duplicates** of an affix you already have, and **any affix below your "Sell affixes below rank" setting**. These are exactly the items that otherwise get flagged "Will Sell" but stick in your bags forever, because the merchant refuses them (no sell price).
+- **Never touches what you're keeping.** A rank you haven't extracted yet still shows "Keep" and is never marked, so you don't lose ranks you're still collecting. Items with a vendor price are left for the sell path (you keep the gold). Keep List, equipped gear, quest items, tomes/recipes, and profession tools are never marked.
+- **Works on its own.** Just turn it on (with affix protection + "Allow items to be deleted"); it does NOT require the "Allow selling affixes you already have" option. The Help entry spells out the "below your rank floor" interaction so it doesn't catch you out.
+- **Keep bind-on-equip dupes for the auction house (opt-in, default off).** A sub-option of "Allow selling affixes you already have" in Item Protection. With it on, EbonClearance only **vendors the soulbound** affix dupes (a vendor is their only exit) and **keeps the bind-on-equip** ones so you can auction them yourself. Off keeps today's behavior (sell every owned dupe regardless of bind type). The tooltip and `/ec sellinfo` both reflect the split, so a kept BoE dupe never shows "Will Sell". Suggested by Broyo, who wants soulbound dupes gone but BoE dupes saved for the auction house.
+- **Internal:** a shared `affixDisposable` helper now backs the delete gate, the new scan, and mirrors `EC_IsSellable`'s affix release (Allow Sell / owned dupe / below-floor), so sell and delete can't diverge. The delete-path dupe check was also upgraded from description-only to the full 3-layer `playerOwnsAffix`. The bind-type split (`keepBoeAffixDupes`) is applied to both of `EC_IsSellable`'s dupe-release sites plus the tooltip and the `/ec sellinfo` trace, kept in lockstep. New scan runs from the existing BAG_UPDATE debounce; Tests 102 + 103 lock it.
+
+Additive account-wide schema fields, downgrade-safe. Safe overwrite from v2.46.x.
+
+### v2.46.6
+
+**Bug fix: Loot Log no longer leaves ghost rows for items the addon destroys.**
+
+Reported by Broyo (screenshot): looted PvP-Resilience items left `item:XXXXX` rows in the Loot Log that wouldn't go away. The rows had `x1` counts and `0.0%` shares - the visible artefacts of items the addon destroyed before they were ever displayed properly.
+
+Why it happened: the BAG_UPDATE debounce flush runs the auto-mark-Resilience scan (which adds qualifying items to the Delete List), then the auto-delete-on-pickup scan (which destroys ONE Delete-List item per burst due to popup serialisation), and finally the Loot Log's bag-delta scan. New PvP items sat in bags between the auto-mark add and the actual delete on the next burst, so the Loot Log credited them as "looted" - then they vanished, but the row stuck around. To compound it, `GetItemInfo` often hadn't cached metadata for items the player never tooltip-hovered, so the row's name rendered as the raw `item:XXXXX` placeholder.
+
+- **`EC_ScanLootDelta` now skips Delete-Listed items when both `enableDeletion` and `autoDeleteOnPickup` are on.** Items the addon is about to destroy never get a Loot Log row created. If you have `autoDeleteOnPickup` off, items on the Delete List still count - you put them there for manual vendoring, they're real loot you'll handle.
+- The v2.46.5 right-click Hide is still there for cleaning up any leftover ghost rows from before this fix, or for hiding rows you just don't want to see for other reasons.
+
+Test 101a-c pins the contract: gate keyed on both flags, uses `NS.IsInSet` (boolean-set semantics), gate is inside the positive-delta branch with the snapshot rebase still running unconditionally after the loop.
+
+---
+
+
+### v2.46.5
+
+**Loot Log: gold value per item, sort by gold, and hide-an-entry.**
+
+- **Gold value + share.** Each row now shows the count, the stack's vendor value (quantity x sell price), and that value's share of your total looted gold - so you can see which drops actually earn and which are dead weight worth filtering or deleting. A worthless drop reads as a grey dash and 0%. The total line now also shows total looted value. (Value is vendor sell price; items you'd auction for more are underestimated.)
+- **Sort by Gold.** The third sort column is now Gold (was a second Count). Count sorts by quantity, Gold by value - they diverge when a high-volume drop is low-value, which is the whole point. The window opens Gold-sorted, highest earners first.
+- **Hide entries.** Right-click a row to hide that item: it drops out of the list AND the totals, so every other row's count/gold share rebases (handy when a high-volume filler like cloth is skewing the numbers). The Unhide All button shows the hidden count and restores them; it greys out when nothing is hidden. The hidden set is account-wide and persists across the Session / Character / Account views and across /reload.
+
+---
+
+
+### v2.46.4
+
+**Bug fix: vendor-refused items no longer wedge the sell loop.**
+
+Reported by Broyo: a purple (epic) item the vendor refused to buy spun the cycle forever. The chat line `Sold 200+ items so far, looking for more...` climbed unbounded; the workaround was to manually add the item to the Delete List. Reproduction shape - any item where `UseContainerItem` returns silently (server says no): BoP-on-use, quest-adjacent epic, stale `GetItemInfo` cache.
+
+The cycle didn't notice the no-op sale. `BuildQueue`'s fresh bag walk every iteration found the same item, re-queued it, and `FinishRun` re-emitted the chat line. No mechanism existed to mark "I tried this slot, the vendor refused, skip it" - neither `triedThisRun` nor `failedSells` nor anything similar.
+
+- **Per-merchant-cycle `(bag, slot) -> itemID` blacklist.** `EC_vendorRefusedThisRun` table file-local in `EbonClearance_Events.lua`. Wiped on `StartRun` + `MERCHANT_CLOSED` so a new visit gets a fresh try.
+- **`DoNextAction` marks the slot immediately after `UseContainerItem`.** Mark, not refusal - the verification happens later because WoW 3.3.5a's `UseContainerItem` is async (`ITEM_LOCK_CHANGED` then slot empties on `BAG_UPDATE`). The mark just records "we tried this exact itemID in this slot."
+- **`BuildQueue` skips refused slots before the expensive sellability scan.** If `EC_vendorRefusedThisRun[key] == GetContainerItemID(bag, slot)`, the slot still holds the same item we tried earlier -> vendor refused -> skip. A different item in the slot (loot, drag-drop, swap) gets a fair try because the equality check fails. The cheap dictionary lookup runs before `EC_IsSellable`'s tooltip scan + multi-API path, so the worst case (bags full of identical refused items) doesn't pay the sellability cost per duplicate per cycle.
+- **Test 100a-d** pins the four insertion sites (table declaration, wipe sites, post-`UseContainerItem` mark, pre-`EC_IsSellable` skip predicate). Pure static-pattern checks - the in-game wedge-vs-no-wedge behaviour can only be verified against a real vendor-refused item.
+
+Known limitations of this patch:
+
+- **Counter still uses queue-length, not actual sales.** `EC_batchTotalSold + #queue` in `FinishRun` over-counts by 1 per refused item per cycle. The cycle terminates correctly (refused items are dropped from the next queue), so the inflation is bounded - not unbounded as before. A clean fix needs to wait for `BAG_UPDATE` to settle before counting; doing it synchronously in `FinishRun` would undercount in-flight successful sales (worse for player trust than slight over-counting). Deferred.
+
+Two notes from the field while diagnosing:
+
+- The existing `currentID ~= action.itemID` guard at the start of `DoNextAction` only catches "slot moved between queue-build and execution." Vendor refusal doesn't move the slot - the item is still there - so that guard never fires for this bug.
+- The pre-check on `sellPrice > 0` in `EC_IsSellable` already filters most never-vendorable items. The bug only shows for items that pass the client-side pre-check but get rejected at the server.
+
+---
+
+
+### v2.46.3
+
+**Help: every Merchant and Scavenger setting now has a `[?]`, and the bind-filter icon points to the right place.**
+
+- **Per-rarity rows (Merchant Settings)** now carry two correctly-targeted help icons: the one beside "Use equipped iLvl" explains the fixed-cap vs. equipped-iLvl decision, and the one beside the "Bind:" dropdown explains the bind-type filter. Previously the row's single icon - sitting next to "Bind:" - linked to the iLvl entry, so clicking it gave the wrong help.
+- **Scavenger Settings** gains a dedicated **"Scavenger & looting"** Help section, and every control there now has a `[?]`: Summon after selling, Only summon out of combat, Summon delay, Auto-loot cycle, Bag slots remaining before selling, Auto-open lootable containers, and Fast Loot. (The summon and cycle icons previously pointed at a generic troubleshooting entry.)
+
+All findable through the Help panel's search box.
+
+---
+
+
+### v2.46.2
+
+**Help: documented the last two Merchant Settings controls.**
+
+The "Sell at:" merchant-mode dropdown and the "Time between sells" sell-speed slider were the only Merchant Settings controls without a `[?]` help icon. Both now have one, deep-linking into the Help / FAQ panel (and findable via the new search box):
+
+- **"Sell at: which merchants?"** - Goblin Merchant only / Normal Merchants only / All Merchants, and that it controls WHERE selling runs, not what sells.
+- **"Time between sells (sell speed)"** - lower is faster, the sells-per-second readout, how Fast / Turbo Mode interact with it, and the disconnect caveat on very fast pacing.
+
+---
+
+
+### v2.46.1
+
+**Fix: the Loot Log counted items taken from the mailbox (and the auction house, trade, guild bank, and crafting).**
+
+The guard that excludes non-loot bag inflows walked a list of frame references with `ipairs`. Several of those windows (guild bank, auction house, trade, tradeskill, craft) are load-on-demand and are `nil` until first opened in a session - and `ipairs` stops at the first `nil`, so every check after it was silently skipped. With no guild bank opened, the mailbox / auction / trade checks never ran and their item grants were counted as loot. The guard now looks frames up by name so a `nil` can't short-circuit it, and also excludes quest-reward and gossip grants. Only mob / boss / container loot and the Greedy Scavenger's haul are counted now. (Merchant and bank were never affected - they sit before the `nil` hole.)
+
+If your Loot Log already shows mail or other non-loot items, use the **Clear** button on each view (Session / Character / Account) to reset to a clean baseline.
+
+---
+
+
+### v2.46.0
+
+**Sell Known Recipes, a Loot Log, and a searchable Help panel.**
+
+- **Sell Known Recipes.** New opt-in sell rule (Protection Settings, alongside the tome controls): profession recipes this character has already learned auto-sell at vendors, gated per rarity (White / Green / Blue / Purple). Unlearned or unreadable recipes are never sold. Learn-state is read per-character from the live tooltip, so each alt only sells the patterns it already knows. When on, it overrides "keep all tomes / recipes even after you learn them" for learned recipes; non-recipe tomes and unlearned recipes stay protected. The hover tooltip verdict, `/ec sellinfo`, and the Alt+Right-Click menu all reflect the new rule.
+- **Loot Log.** A resizable window - open with `/ec loot`, the Stats panel's Loot Log button, or a new key binding - listing everything you've looted and how much. It counts every item that lands in your bags: your own loot, the auto-loot cycle, and the Greedy Scavenger's haul. (The Scavenger drops loot straight into bags without a chat line, so the count is tracked by net bag change rather than loot messages, and it skips vendor buys, bank, and mail.) Each row shows the count and that item's share of your total looted volume, so you can eyeball what's common vs rare in a farm spot. Three views: Session (this login), Character (this character's lifetime), Account (all characters). Sort by name / count / %, filter by rarity, drag the bottom-right corner to resize, and Alt+hover a row for EbonClearance's plain-English verdict on that item. Tallied per item, so storage stays small no matter how long you farm.
+- **Sell Info quick action.** Alt+Right-Click a bag item and choose **Sell Info** for the same per-item decision trace `/ec sellinfo` prints.
+- **Help panel search.** A search box at the top of the Help / FAQ panel filters entries by keyword; matching sections auto-expand, with a "no matches" note when nothing hits.
+- **Quickstart.** New question "Sell recipes you've already learned?" - Recommended and Cautious default to No, Farmer and Power to Yes.
+- **Key binding.** "Open/close Loot Log" added under Key Bindings > EbonClearance.
+
+Schema is additive and downgrade-safe: per-character `sellKnownRecipes` + `sellKnownRecipeQualities`, a per-character `lootedItemCounts` ledger, and an account-wide `accountStats.lootedItemCounts` mirror. The in-game Help / FAQ panel gains entries for Sell Known Recipes, the Loot Log, the Sell Info menu, and "why does Alt+Right-Click only show Allow Sell?".
+
+---
+
+
+### v2.45.2
+
+**Docs sync for the v2.45.0 / v2.45.1 release pair. No code changes.**
+
+The v2.45.0 transferred-proc work introduced new tooltip labels and a new diagnostic command; v2.45.1 added a 2H-vs-offhand judgment. Surfacing both to players + contributors:
+
+- **Help / FAQ** (in-game `Help / Troubleshooting` panel) gains three new entries:
+  - `Keep (affix known)` - explains the unranked variant of the ranked-known label, with a pointer to the `Allow selling affixes you already have` toggle.
+  - `Keep (affix needed)` - explains the unranked variant of the ranked-needed label.
+  - `Affix item silently sold? Dump the raw tooltip scan` - documents `/ec scandebug` and what its copyable dump contains. Mirrors the existing `/ec affixdebug` and `/ec processdebug` FAQ entries.
+- **README** Protection Settings bullet now calls out unranked PE transferred procs (Vampirism / Resurgence) explicitly so the support is visible without reading the changelog.
+- **docs/ADDON_GUIDE.md** affix-detection section documents the v2.45.0 `parseAffixFromTitle`-returns-nil fallback path through the `@affix@` marker, the `playerHasAffixFamily` widening (`next(ranks) ~= nil` -> `ranks ~= nil`), and `/ec scandebug`'s catalog-lookup diagnostics.
+- **Locale templates** (`EbonClearance_Locale_frFR.lua`, `EbonClearance_Locale_deDE.lua`) get four empty entries for the new English strings so community translators can fill them in.
+
+If you've been wondering whether the addon picks up Vampirism / Resurgence / Thunderfury procs from PE-transferred weapons - it has since v2.45.0, and the in-game Help panel now says so.
+
+---
+
+
+### v2.45.1
+
+**Bug fix: offhand drops were labelled "Keep (possible upgrade)" when the player wields a 2H.**
+
+Reported by Zukii: equipping a staff (or any `INVTYPE_2HWEAPON`) leaves slot 17 locked empty. Looting an offhand-equipLoc item (`INVTYPE_SHIELD` / `INVTYPE_HOLDABLE` / `INVTYPE_WEAPONOFFHAND`) hit `isDowngradeVsEquipped`'s `empty_slot` bailout (slot 17's iLvl is 0) and returned not-a-downgrade. The tooltip then fell into the `matchedAgainstEquipped` branch and labelled the offhand `Keep (Green, possible upgrade)` despite the player being unable to dual-wield with a 2H equipped.
+
+v2.33.x had already fixed the symmetric case for 1H weapons (narrow candidate slots to `{16}` when MH is 2H so the 1H compares against the 2H's iLvl). The original v2.33.x comment explicitly noted: *"Single-slot offhand equipLocs (SHIELD / HOLDABLE / WEAPONOFFHAND) keep their current behaviour: the slot really is empty + the looted item is a different playstyle commitment, separate judgment call."* That judgment turned out wrong for the typical case - players committed to 2H builds get a steady stream of low-iLvl offhand drops mislabelled as upgrades.
+
+- `isDowngradeVsEquipped` now applies the same `{16}` narrowing to offhand-equipLoc items when MH is `INVTYPE_2HWEAPON`. Offhand drops are compared against the 2H's iLvl, so the auto-rule disposes of low-iLvl offhands when the player has chosen 2H.
+- `checkBagsForUpgrades` does NOT get the symmetric fix: its conservative `empty_slot` bailout still prevents high-iLvl offhands from spam-flooding the Keep List for players committed to 2H builds.
+- Test 99k pins the contract.
+
+If you actively alternate between 2H and 1H+offhand setups, add specific offhands you want to retain to your Keep List - the auto-rule now treats offhand-when-using-2H the same way it treats 1H-when-using-2H since v2.33.x.
+
+---
+
+
+### v2.45.0
+
+**Unranked PE affix detection.** Skoll's Fang of Vampirism / Thunderfury / Viscous Hammer of Resurgence and other PE transferred-proc weapons are now recognised as PE affixes (which is what they ARE in PE's data model), not just defended through the v2.44.11 chance-on-hit safety net. Reported by Zukii; diagnosed against test weapons.
+
+PE's transferred-proc system applies a chance-on-hit proc to a target item as an `@affix@`-wrapped description line, but it does NOT add a rank suffix to the title (the source proc doesn't have ranks). v2.20.0's `parseAffixFromTitle` required a Roman-numeral suffix as the discriminator vs vanilla `ItemRandomSuffix.dbc` entries (`of the Bear`, `of the Owl`, etc.) - which rejected the legitimate unranked PE affixes too.
+
+- **`bagSlotAffixData` + `liveTooltipAffixData` fall back to the `@affix@` marker** when `parseAffixFromTitle` returns nil. The marker IS PE's authentic discriminator - it wraps PE-managed effect text on the raw scan tooltip and is absent from vanilla suffix items. Returns `{ name, rank = nil, description }` for unranked affixes.
+- **Family-name fallback for unranked affixes.** PE injects different wording on item-side ("your Strength is increased by 10 for 15 seconds") vs spell-side ("your Strength is increased for 15 seconds") - so the description-text match misses even when the player has the affix learned. The fix matches by affix family name instead: `playerHasAffixFamily("Resurgence")` returns true if the spellbook has any spell that parses to that family. Mirrors the v2.35.1 family+rank fallback for ranked affixes.
+- **`playerHasAffixFamily` widened:** pre-v2.45.0 it required `next(ranks) ~= nil` in the family's ranks table; the spellbook walk only inserts rank entries when the spell title carries a Roman numeral, so unranked spells like "Resurgence" left the ranks table empty and the check rejected them. v2.45.0 returns true on family-key presence alone. Ranked affixes still go through the strict (family, rank) check via `playerHasAffixRank` - unchanged.
+- **Tooltip labels for rank=nil:** `Keep (affix known)` / `Keep (affix needed)` instead of `Keep (affix rank known)` / `Keep (affix rank needed)`. Same `statusTag` so bag-border tints and other downstream surfaces stay identical.
+- **Cache-poison guard widened:** `stableNoAffix` now requires both "no Roman suffix" AND "no @affix@ marker" before caching false. Prevents a cold-tooltip scan from masking an unranked PE affix for the rest of the session.
+- **`/ec scandebug` enhanced** with catalog-lookup diagnostics: `playerHasAffixDescription`, `playerHasAffixFamily`, normalised description / family name, catalog entry counts. Future "affix detection misses" reports come with the right data first try.
+
+The v2.44.11 chance-on-hit defensive catch stays in place as a belt-and-braces fallback. When both fire, the affix gate runs first in `EC_IsSellable` so the more-specific protection wins.
+
+End-state behaviour matches Zukii's ask: "the addon thinks about the thing as a proc on hit and not an affix to be learnt" - now it thinks of it as an affix, and once the affix is extracted (spellbook has the engraving), every item with that affix releases automatically when "Allow selling affixes you already have" is on.
+
+---
+
+
+### v2.44.12
+
+Diagnostic command added. The v2.44.10 / v2.44.11 chance-on-hit pattern fixes haven't landed on Zukii's transferred-proc weapons; before guessing a third pattern, capturing what EC's hidden scan tooltip actually sees.
+
+**New: `/ec scandebug <bag> <slot>` diagnostic command.**
+
+Opens a copyable window with every TextLeft line of the hidden `EbonClearanceScanTooltip` after `SetBagItem`, plus the parsed outputs of `parseAffixFromTitle`, `scanTooltipForAffixDesc`, `itemHasChanceOnHit`, and `bagSlotAffixData`. Reveals whether the proc / affix description is in the hidden tooltip at all, or whether PE's tooltip enrichment skips hidden tooltips (the leading hypothesis for why v2.44.10 / v2.44.11 didn't fix Zukii's silent-sell).
+
+- Slash command: `/ec scandebug <bag> <slot>`. Bag and slot are required; the bag-slot location of the affected item can be found by hovering it and reading the tooltip header in some bag addons, or just experimenting (bag 0 is the backpack, slots count from 1).
+- Output sections: Item Context, Scan Tooltip Lines (1-30, the same lines EC's predicates read), and Detection Results.
+- Same copy-frame chrome as `/ec bugreport` / `/ec processdebug` / `/ec affixdebug dump` so the output can be pasted into a Discord report.
+- Listed in the README slash-commands table and the Main panel's slash-row reference.
+
+No behaviour change for the auto-sell / Keep / Delete pipelines. The proper fix for transferred-proc detection lands in a later release once we know what's actually in the scan tooltip.
+
+---
+
+
+### v2.44.11
+
+Follow-up to v2.44.10: the pattern was anchored to line start; PE wraps proc text in `@affix@` markers so the anchor failed.
+
+**Bug fix: v2.44.10's chance-on-hit pattern matched against raw scan-tooltip text that starts with `@affix@`, not `Your`.**
+
+Caught by Zukii: confirmed v2.44.10 was loaded (header `Version: v2.44.10`) but `/ec sellinfo` on `Skoll's Fang of Thunderfury` still showed `chanceOnHitProtection - n/a`. The pattern `^Your%s.- have a chance to%s+%a` anchored on line start - but PE wraps the proc text in `@affix@...@affix@` markers on the raw scan tooltip, so the actual line reads `@affix@Your spells and abilities have a chance to Blasts your enemy with lightning...@affix@` and the `^` anchor never matched. The scanTooltipForAffixDesc function (which DOES catch the markers) was the clue.
+
+- Dropped the `^` anchor: `Your <subject> have/has a chance to <verb>` matched anywhere in the line. The PE-marker prefix is no longer a blocker.
+- Test 14 pinned to verify the pattern is NOT line-start-anchored (regression guard against re-anchoring).
+- The proper affix-detection refactor (treating PE transferred procs as unranked affixes via the `@affix@` marker discriminator) is still coming in v2.45.0. v2.44.11 is the defensive belt that stops the silent sell now.
+
+If you had v2.44.10 loaded but still saw PE transferred-proc weapons in the Will Sell verdict, update to v2.44.11 and they'll route through chance-on-hit protection on the next /reload.
+
+---
+
+
+### v2.44.10
+
+Defensive fix for PE transferred-proc weapons silently selling.
+
+**Bug fix: chance-on-hit detector missed PE's transferred-proc tooltip phrasing.**
+
+Caught by Zukii: a Shaman saw `Skoll's Fang of Vampirism` (Blue, itemID 49227, ilvl 187) tagged `Will Sell (Blue, lower than equipped)` even with `Protect Affixed Rare Items` + `Protect Chance-on-Hit Items` both on and Vampirism not in the extracted-affix catalog. Root cause: PE's transferred-proc system applies a chance-on-hit proc to a target item using a tooltip phrasing that didn't match either of EC's two existing anchors. Vampirism's line reads "Your spells and abilities have a chance to steal life from the target..." - neither `Chance on hit:` (the vanilla `ITEM_SPELL_TRIGGER_ONPROC` constant) nor `Equip: Chance to <verb>` (the v2.26.0 Quillshooter-style PPM anchor) catches it. The chance-on-hit safety net never fired and the auto-sell rule vendored the weapon.
+
+- `lineLooksLikeChanceProc` now also matches `^Your%s.- have a chance to%s+%a` and the singular `has a chance to` form. Anchored on `Your <subject> have/has a chance to <verb>` so unrelated text containing "chance to" doesn't false-positive the auto-sell sweep.
+- Conceptually this is a defensive layer: PE actually models transferred procs as affixes (the `@affix@`-marked tooltip line), and the proper fix lives in the affix-detection code (unranked-affix support). That's a wider refactor coming in the next release. Until then the chance-on-hit detector keeps these items protected.
+- Tests 13 / 14 expanded to pin the two new patterns alongside the existing ones.
+
+If the chance-on-hit gate false-positives a proc you DO want to sell, Alt+Right-Click → Allow Sell adds the itemID to your allow list (same override as the existing chance-on-hit detection).
+
+---
+
+
+### v2.44.9
+
+Crystallized / Mote condensing via a new Process Bags Convert mode + panel tidy.
+
+**New: Convert mode in Process Bags (Crystallized / Motes).**
+
+Asked for by ayres on Discord; the BC-era Mote tier was folded in too since it follows the identical mechanic. Any stack of 10+ Crystallized Fire (or Crystallized Earth / Air / Water / Shadow / Life) shows up in the new Convert section of Process Bags. Click Process Next (or use the keybind) and EbonClearance right-clicks the stack, which the game converts to 1 Eternal of the same school. Same flow for the BC-era 10-stack Motes (Mote of Fire / Earth / Air / Water / Life / Mana / Shadow) which condense to Primals. No profession required.
+
+Implementation note: an earlier draft tried to fire conversions automatically from the BAG_UPDATE debounce, which hit WoW 3.3.5a's secure-execution wall. UseContainerItem on items whose OnUse casts a server-side spell is taint-restricted to hardware-event-driven secure call chains. Process Bags already does the secure-button dance (SecureActionButton + macrotext triggered by a player click), so Convert slots in as a 5th processing type alongside Disenchant / Mill / Prospect / Lockpick. One click per stack instead of zero clicks; the addon still does 100% of the discovery work.
+
+- **All 13 lower-tier itemIDs covered:** WotLK Crystallized 37700-37705 + TBC Motes 22572-22578.
+- **Standard Process Bags vetoes apply:** any itemID on your Keep List / Sell List / Delete List is hidden from the Convert section so you can keep / sell / destroy specific elementals as intended.
+- **Convert macro is `/use bag slot` only** (no `/cast`), because the OnUse on the lower-tier item is what triggers the server-side condensation.
+- **Help FAQ entry "Convert mode (Crystallized / Motes)"** documents the one-click flow and the 3.3.5a security reason auto-fire isn't possible.
+
+**Tidy: Process Bags panel dropped the redundant "Tip:" line.**
+
+The grey "Tip: bind a key to Process Next..." label said the same thing the [?] icon's FAQ entry already says in more detail. Removed the line; hoisted the [?] up to attach to the description line above so the keybind explainer is still one click away. One less line of chrome on the panel.
+
+---
+
+
+### v2.44.8
+
+Sharper workaround for the minimap-clash symptom.
+
+**Bug fix follow-up: hide toggle now skips button creation entirely.**
+
+Reported by Safra. v2.44.7's "create then `Hide()`" hide-button toggle didn't fix her black-minimap symptom - even with the button hidden, the minimap canvas still went black as long as EC was loaded. Testing also ruled out fresh-SavedVariables and a third-party-fork mismatch as the cause. The remaining hypothesis: **the act of parenting a child frame to Minimap is itself the trigger**, regardless of whether the child is visible. Some host UI replacements hook Minimap-frame children aggressively, and the visibility state of EC's button is irrelevant once the parent-child link exists.
+
+- `EC_CreateMinimapButton` now early-returns BEFORE any `CreateFrame` call when `DB.minimapButton == false`. No Minimap-parented child frame is ever created. The parent-child link doesn't exist; a host UI hook has nothing to react to.
+- `NS.SetMinimapButtonVisible(true)` lazy-creates the button via `NS.CreateMinimapButton` when the player flips the toggle back on without a /reload.
+- Test 97b updated to lock the skip-creation behaviour. EC-TRAP comment placed so a future "always create, just hide" cleanup attempt fails CI rather than recreating the bug.
+
+If the v2.44.7 hide toggle fixed your symptom, v2.44.8 changes nothing visible. If you previously hit a minimap clash and the v2.44.7 toggle didn't help, this version's stronger workaround should.
+
+---
+
+
+### v2.44.7
+
+Workaround for the minimap-frame clash with magnifier / replacement addons.
+
+**New: hide the EC minimap button.**
+
+Reported by Safra. The EC minimap button creates a frame parented to `Minimap` at frame level 8. Some minimap-replacement / magnifier addons (Magnify-WotLK was the trigger) hook the Minimap frame in ways that clash with a child button, with reports as severe as the entire minimap turning black. No EC code paints anywhere on the minimap canvas; this is purely a third-party-hook interaction. Without a confirmed root cause we can fix from our side, ship the workaround:
+
+- **Main panel checkbox** "Show the EbonClearance minimap button" (default ON, existing players see no change).
+- **`/ec minimap on|off|reset` slash command** - `reset` re-centres the button to its default angle (220 deg) for players whose drag-handler placed the button somewhere unreachable.
+- **EC stays fully functional with the button hidden:** open settings via `/ec`, the LDB launcher (Bazooka, Titan Panel, ChocolateBar), or your key binding.
+
+`DB.minimapButton = true` lives at the per-character level (each character can independently show/hide). Help FAQ entry "Hide the EbonClearance minimap button" documents the workaround.
+
+If you've never seen the minimap-clash symptom, this release changes nothing for you.
+
+---
+
+
+### v2.44.6
+
+Tooltip-label fix for items the dynamic-cap rule can't evaluate (ammo, bags, tabards, class-restricted relics).
+
+**Bug fix: 'Keep (possible upgrade)' tooltip was mislabelling items with no equipment slot.**
+
+A Rogue's tooltip showed `Keep (Blue, possible upgrade)` on a Doomshot (Rare ammo, item 12654, `INVTYPE_AMMO`). `INVTYPE_AMMO` doesn't appear in `EC_compCache.INVTYPE_SLOTS`, so the underlying `isDowngradeVsEquipped` correctly returned `false, "no_slot_mapping"` and the auto-rule pass + `checkBagsForUpgrades` both correctly left the item alone. **The bug was only in the tooltip annotation**: it read the boolean return but ignored the reason, lumping "no slot to compare against" together with "real upgrade candidate" under the same `matchedAgainstEquipped` branch.
+
+Worse, the original "Keep" framing implied active protection. The addon isn't actively protecting ammo - it's declining to evaluate it. New label is `Won't Sell (<rarity>, no equipment slot)` with `statusTag = "wontsell"`, mirroring the existing `Won't Sell (equipped)` and `Won't Sell (no value)` labels. The honest framing: the dynamic-cap rule has no equipped slot to compare ammo / bags / tabards / class-restricted relics against, so the auto-rule passes on them. Add to Sell List if you want them gone.
+
+- Tooltip captures the reason from `isDowngradeVsEquipped` and routes `no_slot_mapping` / `not_equippable` items to the new `Won't Sell (<rarity>, no equipment slot)` label.
+- `Keep (<rarity>, possible upgrade)` is unchanged for genuine upgrade candidates (multi-slot empty slots, items at-or-above the lowest populated slot).
+- New locale key added to the fr/de templates as empty strings for community translators.
+- Test 96a-c pin the routing.
+
+No setting changes, no schema changes, no functional behaviour change. Pure tooltip wording.
+
+---
+
+
+### v2.44.5
+
+Defensive patch for a rare stuck-state in the scavenger -> goblin swap.
+
+**Bug fix: scavenger-to-goblin swap could get stuck if a vendor-cycle flag was left set.**
+
+Reported by nohsi + Shandrax. When bags fill above the threshold, EbonClearance dismisses the Greedy Scavenger and summons the Goblin Merchant. Two players hit a state where the swap silently never fires - bags full, scavenger still out, no goblin, cycle hung in 'looting' for 20+ seconds. The bug-report data shows `EC_HandleBagFullForCycle` is being early-returned at one of its five gates; the leading suspect is `vendorRunning` getting stuck `true` from a prior cycle. No code in the swap path has changed in 90 days, so this is a latent state-corruption being newly noticed, not a regression introduced by a recent release.
+
+- **New watchdog tick** runs on the existing 1-5s pet-check cadence. If the cycle has been in the stuck signature (`lootCycleState == LOOTING` + `bagFullSince` stamped >7.5s ago + bags still full + not mounted + not in combat) it force-resets `vendorRunning`, `bagFullSince`, and the loot-cycle state to IDLE, then prints one chat line ("Scavenger swap cycle appeared stuck; resetting. If this recurs, please send /ec bugreport.") so the player knows what happened. The pet tick re-syncs scavenger-out and the cycle re-arms on the next BAG_UPDATE.
+- **Four new diagnostic lines in `/ec bugreport`**: Vendor Running, Goblin Summon Pending, Goblin Summon Timer, Goblin Retry Count. These pinpoint which gate of `EC_HandleBagFullForCycle` is blocking when a stuck-swap is reported. Without them we were guessing at the root cause; with them the next report names the culprit.
+
+7.5s is 5x the hysteresis confirmation window, well past any normal-case retry, so the watchdog can't false-positive on a clean cycle. Tests 95a-e pin the diagnostic exposure, the watchdog body, and the OnUpdate hook.
+
+If you've never seen the stuck-swap symptom this release changes nothing for you. The watchdog is silent on healthy cycles.
+
+---
+
+
+### v2.44.4
+
+Tiny QoL toggle.
+
+**New: silence the chat lines from auto-deletion.**
+
+Asked for by ayres. When EbonClearance auto-deletes a Delete-List item the moment it hits your bags, or auto-marks a piece of unsellable Resilience gear for deletion, it normally prints one chat line per event so you can see what just happened. A new checkbox on the Keep / Delete Panel ("Announce auto-deletions in chat") silences both lines.
+
+- Default ON - destructive actions stay visible until you opt out.
+- Greyed out when 'Allow items to be deleted' is off (neither chat line can fire without that anyway).
+- The manual vendor-cycle summary, session stats, lifetime totals, and your Delete List itself are unaffected. The toggle only gates the two per-event lines.
+
+New Help FAQ entry "Announce auto-deletions in chat" explains the scope.
+
+---
+
+
+### v2.44.3
+
+Three Quickstart fixes (latent crash, layout gap, editbox texture layering) + a README pruning pass.
+
+**Bug fix: Quickstart Q5b "fixed" mode crashed with `attempt to call method 'Enable'`.**
+
+Reported by Luxus/ElvinT. The cap-row visibility helper called `capBoxes[q]:Enable()` every time the player toggled to "Use a fixed item-level cap per rarity". `EditBox:Enable()` / `Disable()` are Cataclysm+ additions that don't exist on 3.3.5a - the call threw the moment the user picked fixed mode. Latent since v2.38.0 (Quickstart's initial release) because all four shipped presets default to dynamic mode, so the crash path only fires when a player manually picks the fixed radio (the wizard route).
+
+- Removed the `:Enable()` call. The editbox is enabled by default; `Show()` on the parent row is the right hook. EC-TRAP comment placed at the site and a regression test (Test 88t2) pinned so a future "let's also disable when hidden" cleanup fails CI rather than reintroducing the crash.
+
+**Bug fix: Quickstart Q5b cap rows visually collided with Q6 on low UI scales.**
+
+Same screenshot. The spacer frame between the cap rows and Q6's question label was 1px tall with a 0px Y offset, leaving only ~11 effective pixels of gap. Tight at 1.0 UI scale, collapsed at 0.66 (WoW's default).
+
+- Bumped the spacer height from 1px to 14px and added an 8px Y offset on the anchor in both dynamic and fixed modes. The gap is now ~22px, comfortably survives 0.5 UI scale.
+
+**Bug fix: Quickstart Q5b cap-row editboxes rendered with broken texture layering (White worst).**
+
+Same screenshot, third symptom. The four cap-row editboxes were created with a `nil` name. `InputBoxTemplate` references its `*Left` / `*Middle` / `*Right` child textures by global name, and `NS.StyleInputBox` uses `_G[name .. "Left"]` to normalize their draw layer. With a nil name those textures aren't reachable and the first editbox (White) rendered with stale template layering - the others happened to dodge the bug by frame-creation timing. Mirrors the working Merchant Panel pattern (`EbonClearanceQualityRowNInput`).
+
+- Cap-row editboxes now have unique names: `EbonClearanceQuickstartCap1Input` through `Cap4Input`. `StyleInputBox` reaches the textures and normalizes them. All four editboxes render identically.
+
+**README rewrite.** Slimmed the front-page copy from 18 dense feature bullets to a three-pillar pitch (How it sells / What it protects / The loop) so first-time visitors can size the addon up in seconds. The complete enumeration of every feature stays in [docs/ADDON_GUIDE.md](docs/ADDON_GUIDE.md). Word count down ~25%; surface area down accordingly.
+
+---
+
+
+### v2.44.2
+
+Tiny QoL tweak adopted from a community fork.
+
+- **Summon Delay slider now goes up to 20.0s** (was capped at 3.0s). Default stays 1.6s; existing players see no change. The slider lets you push the Greedy Scavenger summon further back when you want a longer wait between closing the merchant and the pet appearing. The consumer is a single one-shot `EC_Delay(DB.summonDelay, SummonGreedyScavenger)` call, so the value flows through unchanged regardless of magnitude.
+
+Credit: change suggested by Juggalo187 in a personal fork.
+
+---
+
+
+### v2.44.1
+
+Patch fix for a v2.44.0 regression that left affixed items stuck in bags.
+
+**Bug fix: items the rules say to sell were being skipped at the vendor.**
+
+Five Epic affixed items that the tooltip and `/ec sellinfo` both labeled `Will Sell (you have this affix)` were silently retained at the Goblin Merchant. `EC_IsSellable` has a final recheck below the chance-on-hit and tome blocks that catches items whose only positive sell signal has been downgraded to false. In v2.44.0 that recheck still used the old 3-term predicate (`isJunk or qualityPass or whitelistPass`) and never learned about the two new positive signals (`affixRankPass`, `autoDupePass`). Items selling purely via the rank slider OR "Allow selling affixes you already have" entered `EC_IsSellable` then silently returned false at the exit gate.
+
+- **Exit gate now uses the same 5-term predicate as the entrance gate.** Items passing via `affixRankPass` or `autoDupePass` make it all the way through the function the way v2.44.0 intended. Tooltip / `/ec sellinfo` trace / vendor cycle all agree again.
+- **Regression test pinned.** `tests/test_perf_guardrails.lua` Test 92l counts occurrences of the 5-term predicate in `EC_IsSellable` and fails if either copy drifts back to the 3-term shape. EC-TRAP comment placed at the exit gate so a future "match the v2.20.x recheck" simplification fails the test instead of recreating the bug.
+
+No setting changes, no schema changes, no migrations.
+
+---
+
+
+### v2.44.0
+
+Three Murlocked-reported items rolled into one minor: a bug fix and two new opt-in controls for affix-heavy and PvP-loot farming.
+
+**Bug fix: upgrade-protect no longer flags items the player can't equip.**
+
+Reported by Murlocked: items in equip-slots their class can't use - bows on Druids, relics on Mages, plate on cloth classes - were being added to the Keep List as "Keep (upgrade)" because `checkBagsForUpgrades` only compared iLvl against the corresponding slot, never checked whether the player could actually equip the item.
+
+- **New entries gate on `IsUsableItem`.** Items the player's class can't equip are skipped over instead of stamped as upgrades. Only an explicit `false` (class veto) disqualifies; `nil` (uncached) lets GetItemInfo logic still run during item-cache warmup.
+- **Self-heal for already-polluted Keep Lists.** The stale-cleanup pass also removes entries where `IsUsableItem` returns false. Players with bows / relics / wrong-armor pieces stuck on their Keep List from pre-v2.44.0 see them clear automatically on the next sweep - no `/ec clean upgrades` needed.
+
+**New: affix rank threshold as a standalone sell rule.** Plus a symmetric reframe of "Allow selling affixes you already have" so the two affix-sell toggles behave the same way.
+
+Asked for by Murlocked: "set an affix level to sell, e.g. under tier 4". The slider IS the sell rule - if an affixed Rare/Epic item's rank is below the floor, it sells, regardless of your other quality rules / Sell List entries.
+
+- **New slider on the Item Protection panel:** "Sell affixes below rank". Off (0) by default; pick 1-5 to set the floor. Affixes at or above the floor stay protected; anything below is selected for sale by the slider alone - no quality-rule pre-condition, no Sell List entry needed. Keep List entries still veto (your overrides win).
+- **"Allow selling affixes you already have" is now a real sell rule too.** Pre-v2.44.0 it was a release-only lever: turning it on lifted the affix veto, but the item still needed a quality rule or Sell List entry to actually sell. Players hit this gap repeatedly ("I turned it on, why didn't it sell?"). Both affix-sell toggles now act symmetrically: if either fires (rank below floor, OR you've extracted this exact affix), the item sells without needing another rule. Mirror change: tooltip flips from the older "Affix released - add to a list to sell" hint to a plain `Will Sell (you have this affix)`.
+- **Standalone positive signals.** Both `affixRankPass` and `autoDupePass` are hoisted into `EC_IsSellable`'s `isJunk or qualityPass or whitelistPass` check so the affix toggles can fire a sale even when the quality rule for that rarity is disabled. The same conditions still release the affix veto downstream so the protection doesn't override its own rules.
+- **Symmetric across every surface:** sell-path, delete-path (deleteListSlotEligible), Process Bags canDisenchant guard, tooltip annotation, and `/ec sellinfo` trace all agree on the verdict.
+- **Tooltip says it plainly.** When the rank floor is the sell reason, the tooltip reads `Will Sell (rank N below floor M)`. When the "you have this affix" toggle is the sell reason, it reads `Will Sell (you have this affix)`.
+- **Item Protection panel: slider alignment fixed.** The slider was double-indented under the dupe-allow checkbox; it now lines up at the same column as its sibling toggle. Visual hierarchy under the parent "Keep blue/purple items with affixes" toggle is uniform.
+- **New Help FAQ entry** "Sell affixes below rank N" explains the threshold. Existing "Allow exact-rank duplicates" entry is reworded to reflect the new positive-signal semantics.
+- **Quickstart wizard:** new question Q8b "Auto-sell low-rank affixed items?" with four options (Off / sell ranks I-II / sell I-III / sell only-keep-V). Maps to `DB.affixMinSellRank`. The "Power" preset opts into the most aggressive value; all other presets default to "off" so new players keep every affix while learning to extract them.
+
+**New: Current Rules button + `/ec rules` slash command.**
+
+Affix-rank slider on top of dupe-allow on top of quality rules on top of Sell List on top of Keep List - even the addon author needed a single screen to see how every toggle composes. The new "Current Rules" button on the Main panel (next to "Open Quickstart") opens a plain-English summary in a copyable window. Equivalent slash command `/ec rules`.
+
+- **Plain-English step-by-step.** Walks through the actual order EC uses: "Step 1: Should I DELETE this? Yes, if ALL of these apply: ... Step 2: Should I SELL this? Yes, if at least ONE reason to sell applies: ..." Each toggle is shown ON or OFF in colour next to its real in-game label, so the player can match the summary to the panel checkboxes directly.
+- **Settings glance section** dumps every toggle in one column so a screenshot or a Discord paste captures the player's whole config at once. Includes the four quality-rule states, the per-list entry counts, and the master Enable.
+- **Cross-references** to `/ec sellinfo` (per-item trace) and `/ec bugreport` (full diagnostic) so the player knows which surface to reach for next.
+- **New Help FAQ entry** "What rules does EC currently have configured?" deep-links to the new button.
+
+Upgrade note: if you had "Allow selling affixes you already have" on in v2.43.x and were relying on the release-only behaviour (e.g. only Blue items sold because Blue quality rule was the gate), expect more items to sell after upgrading. Turn the toggle off to revert to "no auto-sell from already-known affixes" behaviour.
+
+**New: auto-mark unsellable PvP gear with Resilience for deletion.**
+
+Asked for by Murlocked: PvP items with Resilience that the vendor refuses (no sell price) just clutter bags after farming.
+
+- **Toggle on the Delete List panel:** "Auto-mark PvP gear (Resilience) for deletion". Off by default; gated on "Allow items to be deleted" the same way `Auto-delete on pickup` is. When on, every BAG_UPDATE scans for items with a Resilience tooltip line **AND no vendor price**, and adds them to the Delete List (one chat line per add).
+- **Sellable Resilience gear is left alone.** Items with a vendor price (even green-quality PvP pieces) skip the auto-mark - they'll sell through your normal rules and you keep the gold. The auto-mark only targets gear the vendor would actually refuse. This was tightened mid-iteration after a player reported sellable green PvP pieces (Slippers of Serenity, Pauldrons of Sufferance with 2g+ vendor prices) getting unexpectedly destroyed.
+- **Items already on the Keep List are skipped**, so you can still keep specific PvP pieces by adding them to Keep List first.
+- **Destruction flows through the existing pipeline**: the next vendor visit destroys the marked items, or if you also have "Auto-delete on pickup" on they go instantly. The new toggle is purely an "auto-add to the Delete List" feature; it doesn't bypass any existing safety gates.
+- **Detection is cached per itemID** (mirrors the chance-on-hit cache pattern from v2.20.0) so the BAG_UPDATE sweep doesn't re-scan tooltips when bags shuffle.
+- **New Help FAQ entry** "Auto-mark PvP gear for deletion" explains the flow + the Keep List interaction.
+
+Schema additions (all account-wide, additive, downgrade-safe via the nil-default pattern): `DB.affixMinSellRank` (number, default 0), `DB.autoMarkResilience` (boolean, default false). Safe overwrite from v2.43.1.
+
+### v2.43.1
+
+Adds an in-game language picker so you can read EbonClearance in French or German even when your client can't switch languages.
+
+- **`/ec locale` command.** `/ec locale deDE` (or `frFR`) forces the addon's language; `/ec locale auto` goes back to following your client; `/ec locale` on its own shows the current language and the options. Handy on private-server clients that are locked to one language, and for previewing translations.
+- **Shown in the Main panel.** The slash-command list shows your current language ("Current language: deDE (fallback: enUS)") with one-click German / French / Auto buttons.
+- **Saved per account.** Your choice is remembered (`EbonClearanceDB.localeOverride`, default off = follow client). The switch is mostly live; type `/reload` to refresh the few labels that are built once at load.
+- **Internal:** the locale layer now resolves translations dynamically (per lookup) instead of once at load, which is what makes the live override possible. Additive account-wide schema field, downgrade-safe.
+
+Safe overwrite from v2.43.0.
+
+### v2.43.0
+
+French and German language support. Every player-facing string in the addon can now be translated, with automatic English fallback for anything not yet done. Added for the influx of French and German players on the server.
+
+- **Localization framework (no external libraries).** A tiny layer reads your client's language at login and shows translated text where a translation exists. On an English client nothing changes. Adding a language is a single new file plus one `.toc` line, no other code changes.
+- **Full coverage.** Chat messages, every settings panel, tooltips, confirmation popups, the Quickstart wizard, slash-command help, and the entire 86-entry Help / FAQ are wrapped for translation.
+- **Community-translated.** French (`frFR`) and German (`deDE`) template files ship with every English string ready to fill in. Translations are written by players; an unfilled entry simply shows English, so partial translations are safe. See [docs/TRANSLATING.md](docs/TRANSLATING.md) to help.
+- **Internal:** new `EbonClearance_Locale.lua` + `EbonClearance_Locale_frFR.lua` + `EbonClearance_Locale_deDE.lua` (loaded right after Core). The tooltip verdict logic was decoupled from its displayed label (a new English `statusTag` token drives control flow) so localized labels can't break the sell / keep / delete decisions. New `tests/test_locale_integrity.lua` validates placeholder parity, color-code balance, and no em dashes in every translation.
+
+No schema changes (locale follows the client). Safe overwrite from v2.42.x.
+
+### v2.42.1
+
+Patch release. Fixes a destructive bug in v2.42.0's auto-delete-on-pickup feature: the sweep ignored the master Enable toggle.
+
+Reported by Sanavesa. Repro: right-click the minimap to disable EbonClearance, Alt+Right-Click a bag item and "Mark for delete", `/reload` - the item is deleted on the next BAG_UPDATE despite the addon being "off". The vendor cycle correctly honours `EC_IsAddonEnabledForChar()` (the same helper that bridges minimap right-click, the Main panel Enable checkbox, and `/ec enable / disable`); the new auto-delete sweep in v2.42.0 only gated on `enableDeletion` + `autoDeleteOnPickup` and missed the master check.
+
+- **Fix: the auto-delete sweep now early-returns when the master Enable toggle is off.** Same `EC_IsAddonEnabledForChar()` predicate the vendor cycle uses, so every entry point (minimap, panel checkbox, slash command, keybind) vetoes the destructive path consistently.
+- **Knock-on: re-enabling the master toggle no longer triggers an immediate sweep of items already in bags.** Pre-fix, items already in your bags would auto-destroy the moment you flipped the master Enable back on (because the sweep was running unconditionally and the next BAG_UPDATE picked them up). Post-fix, the sweep waits for the next real bag-state change (loot, vendor open, drop / move). Verified in-game by the reporter as preferable - an explicit master-on shouldn't surprise-destroy items.
+- **Test 88aa** extended to lock the invariant: the runAutoDeleteOnPickup body must reference `EC_IsAddonEnabledForChar`. A future refactor that drops the gate goes red in CI.
+
+Safe overwrite from v2.42.0. No schema changes.
+
+### v2.42.0
+
+New option: auto-delete Delete List items the moment they enter your bags, instead of only at a vendor, to cut vendor trips while farming. Off by default. Suggested by Sanavesa.
+
+- **Auto-delete on pickup (opt-in, default off).** A new "Auto-delete these items the moment they enter your bags" toggle on the Delete List panel (under "Allow items to be deleted", and greyed until that's on). When enabled, any item on your Delete List is destroyed as soon as it's looted, with one chat line per item ("Auto-deleted ..."). It uses the SAME protections as the vendor delete: affix protection still shields Rare/Epic affixed drops; quest items, tomes, and profession tools are not protected (the Delete List is explicit intent). It works in combat, which is the point for farming.
+- **Enabling asks first.** A confirmation popup spells out that it permanently destroys items instantly with no vendor step and no undo. Enabling also sweeps items already in your bags.
+- **Schema:** one additive account-wide field `EbonClearanceDB.autoDeleteOnPickup` (default false), downgrade-safe.
+- **Internal:** the Delete-List eligibility check and the destructive delete were extracted into shared helpers (`deleteListSlotEligible`, `executeBagSlotDelete`) so vendor-delete and auto-delete apply identical policy + stat accounting; the scan runs from the existing BAG_UPDATE debounce, one item per cycle. Test 88aa locks the gating + shared helpers.
+
+Safe overwrite from v2.41.x.
+
+### v2.41.3
+
+Patch release. Clearer empty states across the UI.
+
+- **The Sell / Account Sell / Keep / Delete lists now explain themselves when empty.** Previously an empty list (or a search / rarity filter that matched nothing) showed a blank box. An empty list now reads "This list is empty. Add an item by ID or name above, or Alt+Right-Click an item in your bags."; a search or filter that hides everything shows "No items match your search."
+- **Stats empty states reworded** from the terse "None yet" to context-specific lines: "Nothing sold yet." / "Nothing deleted yet." / "Nothing processed yet." / "No zones tracked yet."
+- **Process Bags** now says "Nothing to process right now." instead of "Nothing eligible." (plainer wording).
+
+Safe overwrite from v2.41.2. No schema changes.
+
+### v2.41.2
+
+Patch release. Two Process Bags polish fixes from real player reports.
+
+**Misleading tip + keybind discoverability.** A new player followed the in-game tip that said holding the Process Next keybind would drain a stack, found that holding did nothing, and reported it. WoW's binding system fires bound actions once per keypress and does not honour OS-level keyboard repeat for keybinds, and a SecureActionButton needs a hardware click each time - the old tip was promising behaviour the addon can never deliver.
+
+- **Tip text rewritten.** The Process Bags panel tip now reads "bind a key to Process Next in Key Bindings to advance the queue one cast per press." No more "hold to drain" claim.
+- **`[?]` help icon next to the tip.** Same widget the rest of the panel uses (heading, soulbound checkbox, DE quality dropdown), deep-linked to a new FAQ entry so the affordance is right at the point of confusion.
+- **New Help FAQ entry "Can I keep casting without using the mouse?"** Under the Process Bags section. Covers where to bind the key (`Esc menu > Key Bindings > EbonClearance`), the one-press-per-cast behaviour, the queue order (Disenchant -> Mill -> Prospect -> Pick Locks), and what the `>` skip arrow does (jump past the current mode).
+
+**Bags falsely queued for Disenchant.** A green-quality Traveler's Backpack (16 Slot Bag) appeared in the Disenchant section; clicking Cast got the server's "Item cannot be disenchanted" error. `canDisenchant` checked `IsEquippableItem` + quality but didn't filter the equip-slot type, and bags pass `IsEquippableItem` because they go in bag slots.
+
+- **Fix: canDisenchant now filters on equipLoc.** Items with `equipLoc` of `INVTYPE_BAG`, `INVTYPE_QUIVER`, `INVTYPE_TABARD`, `INVTYPE_BODY`, or `INVTYPE_AMMO` are rejected - all five are equippable but never disenchantable, even when their quality is green or above. `equipLoc` is an unlocalised constant, so the filter is locale-safe.
+
+- **Tests 88av + 88aw** lock both fixes - the tip / icon / FAQ entry trio, and the canDisenchant equipLoc blacklist.
+
+Safe overwrite from v2.41.1. No schema changes.
+
+### v2.41.1
+
+Patch release. Tidies the Process Bags entry in the Key Bindings list.
+
+The Process Next keybind is a secure click binding, and without a display name WoW showed it as the raw `CLICK EbonClearanceProcessCastBtn:LeftButton` action string (wrapped across two lines) instead of a readable label like the other EbonClearance bindings.
+
+- **Fix: the Process Bags keybind now reads "Process Next"** in Key Bindings, grouped under the EbonClearance header with the rest. Set a `BINDING_NAME_` label for the click binding (mirroring the Target Goblin Merchant binding) and added the missing `header="EBONCLEARANCE"` to its `Bindings.xml` entry.
+
+Safe overwrite from v2.41.0. No schema changes.
+
+### v2.41.0
+
+The item lists are easier to read and the controls above them are clearer for new players.
+
+- **Item icons, quality-colored names, hover tooltips.** Every row in the Sell, Account Sell, Keep, Delete, and Process Bags lists now shows the item's icon and a name colored by its quality (greens green, blues blue, epics purple). Hover any row to see the full item tooltip at the cursor. The green item ID that used to start each editable-list row is replaced by the icon; the ID is still matched by the Search box. Items not yet in your client cache briefly show a question-mark icon and fill in within a second or two.
+- **Tidier list controls.** The Add / Search / Sort area above each list is reorganized into two clear groups: an **Add to list** group and a **Find in list** group (Search, Sort, Clear All, and the new rarity filter), separated by a divider. Every button and input now has a plain-language hover tip.
+- **One "Add item" field.** The separate "add by ID" and "add by name" inputs are merged into a single field: type an item ID, or an item name (exact, or part of a name to add matching items from your bags). Shift-click or drag a bag item to fill in its ID. Note WoW 3.3.5a has no full item-database name search, so a name the client has never seen can't be found by name; an item ID always works.
+- **Rarity filter replaces the ID sort.** Sorting by an item ID you can no longer see was no use, so the "ID" sort button is gone. In its place a **Show:** dropdown filters the list to a single rarity (All / Poor / Common / Uncommon / Rare / Epic / Legendary), which stacks with the Search box. Lists now sort alphabetically by name by default; the **Name** sort button still flips A-Z / Z-A.
+- **Fixed the sort-button arrow.** The up/down sort arrow used a font glyph the 3.3.5 client doesn't have, so it showed as `?`. It now uses a texture arrow that renders correctly.
+
+The icon, name color, and tooltip reuse the lookup each row already did, so there is no extra cost. Sort, Search, Remove, Clear All, and the "Add from bags" buttons all work as before. No schema change, safe overwrite from v2.40.x. Changes live in `EbonClearance_ListWidget.lua` (editable lists) and `EbonClearance_ProcessBagsPanel.lua` (Process Bags rows).
+
+- **Internal:** the three `CreateListUI` perf-guardrail checks now slice to the function's real end marker instead of a fixed byte window, so they no longer go red when the function legitimately grows.
+
+### v2.40.1
+
+Patch release. Fixes a Process Bags trap where clicking the Cast button during the cast or global cooldown would equip the item instead of processing it.
+
+The cast macro is `/cast SpellName` followed by `/use bag slot` - the second line picks up the item to apply the spell to. If you clicked while `/cast` was still in flight or on cooldown, the cast silently no-op'd but `/use` ran anyway, and `/use` on an equippable item means equip. Players on Project Ebonhold who shorten Mill / Prospect / Disenchant cast times below the GCD saw this constantly: cast ends, click again, the item gets equipped instead of disenchanted.
+
+- **Fix: post-click lockout on the Process Next button.** After every click, the button is `:Disable()`d and the standard cooldown swirl paints for `max(effective cast time, 1.5 seconds)`. The effective cast duration comes from `UnitCastingInfo` at `UNIT_SPELLCAST_START` (honours haste / talent / server-side reductions, unlike the base value from `GetSpellInfo`). The 1.5 s floor matches the standard global cooldown and protects against shortened cast times falling below it. Re-enables the moment the lockout clears.
+- **Help FAQ:** new "What's the swirl on the Process Next button?" entry under the Process Bags section explains the visual + the underlying reason.
+- **Test 88au** locks the wiring: the Cooldown frame, the `startProcessCastCooldown` helper, the `PostClick` hook, the `PROCESS_BUTTON_FLOOR_SECONDS = 1.5` floor, the `UNIT_SPELLCAST_START` listener that reads the effective duration from `UnitCastingInfo`, the `armedSpellName` state, the OmniCC opt-out flags, and the `SetCooldown` call all have to remain present.
+
+Safe overwrite from v2.40.0. No schema changes.
+
+### v2.40.0
+
+New feature: a "Stats - Guild" panel that anonymously pools your guild's (and group's) farming and selling data, built on the v2.39.0 addon-comms layer. The existing "Stats" panel is renamed "Stats - Personal" and the two sit together in the options menu.
+
+WoW 3.3.5a has no server-wide addon channel, so this is guild/group scoped. When you open the panel (or click Refresh), EbonClearance asks guildmates and group members who also run it and have opted in, pools whatever they send within a few seconds, and shows it. The view is a live snapshot - it is not saved, so it always reflects who is online and sharing right now. Your own lifetime stats keep growing as usual; the guild view just re-pools everyone's current totals each time you look.
+
+- **Stats - Guild panel.** Best farming zones (by gold), guild totals (combined gold, items sold, best gold/hour - credited to its holder when shared), most-sold items, and sold-by-rarity counts. Two-column layout; most-sold rows show the item tooltip on hover (at the cursor). A `[?]` icon links to its Help FAQ entry.
+- **Opt-in, anonymous by default.** "Share my farming data with my guild" is OFF by default. A dependent sub-toggle, "Show my name with my shared data," is disabled until sharing is on; with it on, your name appears in the "Shared by" line (and can be credited on the best gold/hour line). Without it you stay pooled-anonymous. Honest caveat (stated in-panel): a 3.3.5a addon message always carries its sender, so "anonymous" means EbonClearance discards and never shows the sender, not that it is hidden from someone logging addon traffic.
+- **Reuses the comms transport.** New message types on the v2.39.0 `NS.Comms` layer; reach is GUILD / PARTY / RAID with direct whisper replies. Compact payload kept under the 255-byte limit (top-5 zones, top-3 items by id + name, per-rarity counts, optional name).
+- **`/ec guildtest`.** A solo diagnostic that injects simulated members - and includes you, honoring your live toggles - so you can see the panel populate without a second player online.
+- **Personal Stats polish.** "Top 5 Most Sold / Most Deleted" counts are now gold-colored to match the Guild panel.
+- **Schema:** two additive account-level fields, `EbonClearanceDB.shareGuildData` and `shareGuildName` (both default `false`). Downgrade-safe via the nil-default pattern.
+
+New files `EbonClearance_GuildShare.lua` + `EbonClearance_GuildPanel.lua` (the addon now ships 29 `.lua` files). New test suite `tests/test_guildshare.lua` runs in CI and the release gate.
+
+### v2.39.1
+
+Patch release. Makes the master Enable toggle discoverable from the panels and chat surfaces players actually check when something goes wrong.
+
+A real player report sat in Discord with `Enabled: false` in their bug report and "the addon stopped working" - because the only ways to flip `DB.enabled` were the minimap right-click (subtle; icon just desaturates), a Bindings.xml keybind (only fires if bound), or a global Lua function (requires `/script`). Bag-border tinting is gated by a separate setting, so the addon "looks alive" even with the master switch off, which made the disabled state especially easy to miss.
+
+- **New: "Enable EbonClearance" checkbox** at the top of the Main panel. One click on/off. The setter routes through the existing `EbonClearance_ToggleEnabled()` helper so chat message + sound feedback match the minimap path exactly. The checkbox re-syncs in `OnShow` so a minimap right-click or slash command that happened while the panel was hidden shows the current state next time the panel opens.
+- **New: `/ec status`, `/ec enable`, `/ec disable` slash commands.** Status prints whether EbonClearance is currently ENABLED or DISABLED plus a one-liner hint listing the three flip paths. Enable / disable are idempotent (no-op + plain message if already in the target state) and reuse the toggle helper when a flip is needed. All three rows show up on the Main panel's slash-command reference block.
+- **Fix: minimap icon and Main panel checkbox stay in sync no matter which surface you flip.** Before this patch, toggling via the Main panel left the minimap icon stuck saturated (and vice versa) because the minimap right-click handler and the LDB launcher each did their own `DB.enabled = not DB.enabled` inline. `EbonClearance_ToggleEnabled()` is now the single source of truth: every entry point (minimap right-click, LDB right-click, Main panel checkbox, `/ec enable / disable`, keybind) routes through it, and the helper refreshes every UI surface that mirrors the flag.
+- **Help FAQ:** new entry `Why isn't the addon doing anything?` under Troubleshooting. Covers the three flip paths AND calls out that bag-border tinting is a separate toggle (so "borders still showing" is not evidence the addon is on).
+- **Tests:** Test 88ap pins the Main panel routing through `EbonClearance_ToggleEnabled` (catches a future contributor who tries to write `DB.enabled = v` directly and silently drops the chat / sound feedback). Test 88aq pins the three slash subcommands. Test 88ar pins the Help FAQ entry per the release-includes-help-faq rule.
+
+No schema changes. Safe overwrite from v2.39.0.
+
+### v2.39.0
+
+New feature: EbonClearance now tells you when a newer version is out, built on a small reusable addon-comms layer that future shared features will reuse.
+
+WoW 3.3.5a addons cannot check the web for updates, so EbonClearance learns the latest version by gossiping with other players running it. When you log in (and when you join a party or raid) it asks your guild / group what version everyone is on; if someone has a newer one, you get a single chat line with a clickable link.
+
+- **Version-update nudge (default on).** One quiet chat line per session: `Update available: vX.Y.Z (you have ...)` in yellow, with a green clickable `[Click here]` link. Clicking it opens a small popup with the latest-release URL pre-selected for copy-paste (the 3.3.5a client cannot open a browser, so copy-and-paste is the most a click can offer). Turn it off with the new "Tell me when an update is available" box on the main EbonClearance panel.
+- **Reusable comms transport (`NS.Comms`).** A new `EbonClearance_Comms.lua` owns a single addon-message channel (prefix `ECLR1`): send / register-handler / receive over `SendAddonMessage` + `CHAT_MSG_ADDON`, with a per-channel send throttle. The version check is its first consumer. Reach is GUILD / PARTY / RAID with direct whisper replies; 3.3.5a has no global addon channel, so it is guild + group only.
+- **Numeric version compare.** Versions parse to integers (major, minor, patch) so two-digit versions order correctly. Malformed or absurdly-high versions are ignored, so a bad broadcast cannot produce a false nudge.
+- **`/ec commtest` diagnostic.** A solo self-test: it confirms the server actually delivers addon messages (a guild ping that echoes back) and simulates a higher-version peer so you can see the nudge and confirm the opt-out toggle, all without a second player online.
+- **Schema:** one additive account-level field, `EbonClearanceDB.versionAlerts` (boolean, default `true`). Existing saves auto-migrate via the nil-default pattern; downgrade-safe.
+
+New file `EbonClearance_Comms.lua` (loads after `EbonClearance_Events.lua`); the addon now ships 27 `.lua` files. New test suite `tests/test_comms_version.lua` runs in CI alongside the existing three.
+
+### v2.38.4
+
+Docs-only patch. Adds a Help FAQ entry that v2.38.3 should have shipped with.
+
+v2.38.3's SetOwner-before-SetBagItem fix didn't just restore Mill / Prospect detection - it also restored chance-on-hit / soulbound / affix / known-tome / known-recipe protections inside Process Bags that had been silently neutered by the same bug. Side effect: items that were previously appearing in the Disenchant section (because the proc-detection was broken) no longer appear post-fix, since the protection now correctly hides proc weapons from DE. A player who hadn't read the chance-on-hit help section would see proc weapons disappear from their DE list and assume v2.38.3 broke something.
+
+- **Help FAQ:** new "Why isn't an item in Process Bags?" entry under the Process Bags section. Lists every reason an item can be hidden (Keep List, equipped, chance-on-hit, protected affix, unlearned tome / recipe, stack < 5) and points at the Alt+Right-Click "Allow Sell" path to force a specific itemID through.
+
+Safe overwrite from v2.38.3. No code changes; no schema changes.
+
+### v2.38.3
+
+Patch release. Fixes a silent tooltip-scan failure that hid Mill / Prospect targets from Process Bags (and silently neutered chance-on-hit / soulbound / lockpick / bind-on / known-tome / known-recipe gates as a side effect). Ships the diagnostic command that caught it.
+
+Two players reported the same symptom: Disenchant entries show up in Process Bags, but Milling and Prospecting sections never appear even though the player has the professions trained and stacks of Copper Ore / Bruiseweed / Peacebloom in their bags. Verified locally: a fresh /reload makes Mill and Prospect work again for a while, then they silently break and stay broken until the next /reload.
+
+Root cause: the addon's hidden scan tooltip (`EbonClearanceScanTooltip`) called `SetOwner(UIParent, "ANCHOR_NONE")` exactly once at addon load. Any host UI addon iterating UIParent's children (skinning addons, host bag UI replacements, profiling tools) that calls `:Hide()` on the tooltip drops the owner relationship - and from that point on, every `SetBagItem` against the frame populates zero lines silently. The Mill / Prospect classifier then caches "none" for every itemID it tries to classify, and the cache stays poisoned until /reload.
+
+- **Fix: SetOwner-before-SetBagItem invariant.** New `EC_compCache.scanBagItem(bag, slot)` helper re-establishes ownership on every call. The ten tooltip-scan call sites (Process.lua's `processTooltipHasLine` / `processIsSoulbound` / `canPickLock`, Protection.lua's `itemHasChanceOnHit` / `bagSlotAffixData` / `itemTooltipMatchesKnownTome` / `itemTooltipMatchesKnownRecipe`, Events.lua's `EC_IsOpenable` / `bagBoundsForSlot`, BugReport.lua's diagnostic dump) all route through it. Tests 88am + 88an lock both the helper definition and the no-raw-SetBagItem invariant. Cost: two extra C calls per scan (negligible vs. the silent-failure mode).
+- **New: `/ec processdebug` diagnostic.** One-shot command that opens a copyable window listing every Process Bags gate: spell-known states for DE / Mill / Prospect / Pick Lock, tooltip marker globals, the per-itemID classification cache, every bag slot's exclusion verdicts + tooltip-scan result + canDisenchant / canMill / canProspect outcomes, sample tooltip line dumps for the most suspicious slots (white-quality non-equippables with `none` scan), and the `buildProcessSummary` entry counts per mode. Mirrors `/ec affixdebug dump`'s shape - paste the output, identify the failing layer, no guessing. Sub-command: `/ec processdebug clear` wipes the in-memory classification cache so the next scan rebuilds fresh.
+- **Help FAQ:** new "Process Bags missing herbs / ores / disenchant targets?" entry points players at `/ec processdebug` for the diagnostic shape we want pasted into bug reports.
+- **Main panel slash-command rows:** `/ec processdebug` and `/ec processdebug clear` join the Bug Reporting block.
+
+Safe overwrite from v2.38.2. Schema-additive only; no DB / ADB changes.
+
+### v2.38.2
+
+Patch release. Three fixes shipped together: a Turbo Mode over-count regression that's been in the build since v2.37.7, a Stats panel that went static while you watched it, and two label rewrites so `/ec bugreport` and `/ec sellinfo` match the in-game checkbox wording.
+
+- **Fix: Turbo Mode over-counted stats by up to 4x per vendor cycle.** Turbo's `OnUpdate` runs `DoNextAction()` N times per tick (N = batch size, default 4). When the queue exhausted mid-batch, the remaining iterations would re-enter the queue-empty branch and re-fire `FinishRun()` once per leftover slot. Every call bumped `DB.totalCopper`, `EC_session.copper`, and `ADB.accountStats.totalCopper` AND printed "Vendoring complete!" again - so a single 32-item sell showed up as four chat lines and counted 4x in your stats. Belt-and-braces fix: a top-of-`DoNextAction` `vendorRunning` guard plus a `break` in the batch for-loop the moment `FinishRun` flips the flag. Tests 88ah + 88ai lock both. Existing lifetime totals are likely inflated by some fraction; use Reset Lifetime on Character + Account view to start fresh if you care.
+- **Fix: Stats panel auto-refreshes while open.** `NS.RefreshStats` only fired on the panel's `OnShow`, so after you opened the Stats panel the displayed numbers stayed frozen even as the writes landed in memory. The v2.38.1 `(session +N)` suffix made the staleness glaringly obvious because a `+0` parked itself next to a growing lifetime total. A 1Hz `OnUpdate` driver gated on `IsShown` now repaints once per second - cheap, no debounce gymnastics from the bump helpers. Test 88aj locks the wiring.
+- **UX: `/ec bugreport` label matches the in-game checkbox.** The "Allow exact-rank duplicates" line was the same field as the Item Protection panel's "Allow selling affixes you already have" checkbox, but the shorthand obscured the verb (allow [selling]? allow [keeping]?). The bug report now uses the in-game wording verbatim.
+- **UX: `/ec sellinfo` affix-protection verdict reworded.** "affix present but allow-listed (rank dupe)" implied the affix was on an explicit allow list when it was actually the dupe-toggle letting the item through. The verdict now reads "affix present, selling allowed (you already have this affix)" or "... this affix family at this rank" depending on the match path. The manual Alt+Right-Click allow-list path reads "affix present, manually allow-listed via Alt+Right-Click" so the two cases are visibly distinct.
+
+Schema-additive only via the v2.38.1 nil-default pattern; safe overwrite from v2.38.1.
+
+### v2.38.1
+
+Patch release. Adds an Account view to the Stats panel so players with multiple characters can see their total gold + items processed across the whole account, not just per-character.
+
+The Stats panel has always read from the per-character SavedVariables file - so a player with five alts saw five separate lifetime totals. This patch keeps the per-character view (now called "Character") and adds a parallel "Account" view that aggregates across every character that uses EbonClearance on this account. New stat writes mirror into a fresh account-wide table; existing per-character totals stay where they are.
+
+- **New: Character / Account view toggle in the Stats panel.** Two radio buttons above the first stat row. Character (default) shows the logged-in character's lifetime totals exactly as before. Account shows the same fields summed across every character on the account. A grey one-liner under the toggle ("Account totals counting from <date>") makes it clear that account totals count forward from v2.38.1 install, not retroactively.
+- **Best GPH ribbon in Account view** shows which character set the record: "Best Gold/Hour: 1234g 56s in Stormwind on Charname".
+- **Reset Lifetime button is view-aware.** Character view clears just this character's lifetime totals (existing behaviour). Account view clears just the account-wide ledger; per-character totals are untouched. The button label adapts: "Reset Lifetime (this character)" vs "Reset Lifetime (account)".
+- **Session deltas stay on Character view only.** The grey "(+N this session)" suffixes are inherently per-character, so they only render when Character is selected.
+- **Inventory Worth row stays on Character view only.** It reflects what's currently in the logged-in character's bags, which has no account-wide meaning.
+- **Schema additions:** new `ADB.accountStats` table seeded by `EnsureAccountDB` with the per-character mirror fields (totalCopper, totalItemsSold, totalItemsDeleted, totalRepairs, totalRepairCopper, soldItemCounts, deletedItemCounts, soldItemsByQuality, soldCopperByQuality, deletedItemsByQuality, processCastCounts, copperByZone, bestGPH, bestGPHAt, bestGPHZone) plus `bestGPHChar` (string, names the character that set the account-wide GPH record) and `startedAt` (number, timestamps when this account ledger was first created). Additive, nil-default, downgrade-safe. Safe overwrite from v2.38.0.
+- **Help FAQ:** the existing `stats-overview` entry tightened, plus a new `stats-character-vs-account` entry explaining the toggle, the start-from-zero account ledger, and the view-aware Reset Lifetime behaviour.
+- **Fix: Quickstart preset tooltips legible in default UI.** Hovering Recommended / Cautious / Farmer / Power printed the description into `GameTooltip`, but the Quickstart frame sits at `TOOLTIP` strata with `:Raise()` so the tooltip drew underneath its background and was hidden by the Interface Options frame. The tooltip is now re-raised after showing so the description is always on top.
+- **Internals:** two new helpers (`EC_BumpStat`, `EC_BumpStatBucket`) route every stat increment through one call site that writes to both `DB.*` and `ADB.accountStats.*`. Replaces ~13 individual two-line increment sites; structurally enforces the mirror. Test 88aa locks the helper presence + that every previous increment site converted.
+- **Test invariants:** Test 88aa adds seven sub-checks (schema seeded, helpers defined, every increment site converted, view toggle present, RefreshStats reads from view-selected source, ResetLifetimeStats branches on view, account-side bestGPH writes stamp the character name).
+
+### v2.38.0
+
+Minor release. Adds a Quickstart panel - a one-click on-ramp for new players who'd rather not navigate nine settings panels on first install.
+
+After the v2.36-v2.37 feature spike, the Main panel had drifted from "open it and go" toward "read the docs first". This release ships a guided setup: four preset shortcuts (Recommended / Cautious / Farmer / Power) and 15 short questions that share the same Apply path. Pick a preset and click Apply for two-click setup, or answer the questions for a tailored config. Either path only writes |cffffd870settings|r - your Sell, Keep, and Delete lists are never touched.
+
+- **New: Quickstart panel.** Interface Options > EbonClearance > Quickstart. Four preset buttons at the top, 15 questions in five sections below, one Apply button. Questions cover speed (Fast / Turbo), auto-loot cycle + Fast Loot + auto-open containers, what to auto-sell (with a Dynamic vs Fixed iLvl-cap mode + per-rarity numeric inputs), which merchants, what to auto-protect, PE safety nets (affix + chance-on-hit), tome protection (unlearned only vs all), auto-repair (gold vs guild bank), keep bags open, Goblin Merchant summon, Delete List enforcement, item-level overlay surfaces, and bag-slot border tints. Each preset pre-fills all 15 answers; clicking the preset button stages the answers in the form, clicking Apply commits them after a confirmation popup.
+- **Fresh installs auto-open Quickstart** instead of the previous two-button welcome popup. The popup is gone; the Quickstart panel opens directly at PLAYER_LOGIN.
+- **Main panel** gets an "Open Quickstart" row near the top so returning players can revisit the wizard any time.
+- **Settings-only invariant.** Quickstart never reads or writes `DB.whitelist` / `DB.blacklist` / `DB.deleteList` / `ADB.whitelist`. Test 88m locks this.
+- **One-step undo snapshot.** Apply captures the pre-apply settings into `DB._previousQuickstartSnapshot` so a future "Undo last Quickstart" surface can revert in one click. (Not exposed in the UI yet; the data is captured for the next release.)
+- **Help FAQ:** new "I just installed this. Where do I start?" entry points at Quickstart. Existing `what-are-profiles` entry updated to spell out the Profiles-vs-Quickstart distinction (profiles save lists; Quickstart configures behaviour).
+- **Schema additions:** `DB._needsQuickstartOpen` (set on fresh install, consumed at PLAYER_LOGIN), `DB._activeQuickstartPreset` (string or nil; powers the panel's "Active" tag), `DB._previousQuickstartSnapshot` (table or nil; one-step undo). One-shot migration carries the old v2.37.x `DB._needsWelcome` flag onto the new `_needsQuickstartOpen` for upgraders. Safe overwrite from v2.37.7.
+- **Fix: Alt+Right-Click bag context menu no longer clips off the screen.** Host bag UI adapters that pin bag frames to the right edge (or layouts where the bag column hugs the right side) caused the EC popup to extend past `UIParent`'s right edge. The cursor anchor is now clamped so the popup's right + bottom edges stay inside the screen.
+
+### v2.37.7
+
+Patch release. Faster bag-clearing for players who need it, and a UX pass on the vendoring-speed slider so nobody accidentally sets themselves to the slowest setting.
+
+Player **2.1** on Discord reported the existing fastest setting still felt slow when trying to clear bags between mob waves and dodge environment hazards. After another look at the vendor pacing, this patch ships two things: a new Turbo Mode that pops multiple items off the queue per worker fire (so a full bag empties in a fraction of the time), and a relabelled speed slider with a live items-per-second readout so the practical effect of any setting is visible at a glance.
+
+- **New: Turbo Mode.** Opt-in checkbox in Merchant Settings, default OFF. When on, the vendor worker processes 4 items per fire instead of 1. Stacks with Fast Mode: Turbo + Fast = ~80 items/sec; Turbo alone (default 0.1 s interval) = ~40 items/sec; Fast alone (existing) = ~20 items/sec; default = ~10 items/sec. The per-run cap still applies (80 / 160 with Fast Mode). The 0.05 s inter-fire floor and the per-fire batch size are deliberately tuned so the per-second `UseContainerItem` packet count stays inside what server-side rate limiting accepts. Carry a note next to the toggle reminding players to disable it if they see disconnects.
+- **UX: speed slider relabelled + live readout.** The slider used to be labelled `Vendoring Speed` but the value is the interval between sells in seconds (lower = faster). Players naturally dragged it to the right end thinking "more speed" and ended up at 2 sells per second instead of 10. Now labelled `Time between sells` so the value semantic matches the label, and a new live `About N sells per second.` line below the slider updates as the slider moves and as Fast / Turbo toggle, including a `(Fast Mode overrides slider)` note when the Fast Mode floor is in effect.
+- **Bug report:** `/ec bugreport` now includes the Turbo Mode state alongside Fast Mode + Vendor Interval.
+- **Schema:** one new field, `DB.turboMode`, additive with the nil-default migration pattern. Safe overwrite from v2.37.6.
+
+### v2.37.6
+
+Patch release. Adds a `/ec perf` self-diagnostic and clickable Run buttons for slash commands.
+
+- **New: `/ec perf` slash sub-command.** Prints EC's memory footprint (always), CPU cost (when `scriptProfile` is enabled, with a one-line how-to when it's off), per-itemID cache sizes (affix data, hit-proc, tome, processable, bind, item-affix lookup), per-list entry counts (Sell / Keep / Delete / Account Sell), and side-meta counts ((affix-gated) / (Hit-proc)). Flags if `/ec affixdebug` is still on. Listed in the Main panel slash command reference and in `/ec help`. Test 88j locks the wiring.
+- **New: clickable Run buttons in the Slash Commands section.** Every no-arg-or-safe-default command in the Main panel's Slash Commands list now has a Run button beside it. Coverage: `/ec clean`, `/ec clean upgrades`, `/ec sellinfo`, `/ec bugreport`, `/ec perf`, `/ec profile list`, and all five `/ec affixdebug` sub-commands (`status` / `on` / `off` / `dump` / `clear`) each as their own row. Save / load / delete profile by name stays text-only since the button can't enter a profile name; use the Profiles panel for guided management. Buttons dispatch through `SlashCmdList["EBONCLEARANCE"]` so they execute the exact same path as typed commands. Test 88k locks the wiring.
+- **Internal: `/ec help` slimmed to a 2-line redirect.** Now that the Main panel's Slash Commands section IS the canonical command reference (with buttons), the chat dump that used to live in `/ec help` was duplicate content. The command still exists, prints one short line telling the user to open `/ec`, and avoids the muscle-memory cliff if someone types it anyway. Dropped the `/ec help` row from the Main panel (running it just printed the redirect).
+- **No schema changes.** Safe overwrite from v2.37.5.
+
+### v2.37.5
+
+Patch release. One small additive feature: an opt-in bag-slot border for random-affix items.
+
+- **New: Random-affix border category.** A new entry in Item Highlighting's Sell Border categories tints any bag slot whose item carries a random affix (the in-game roguelite "modifier" system). Default OFF (opt-in, like the v2.37.0 Keep List border) so existing players' setups don't change on upgrade. Default colour is purple. Priority: explicit Sell / Keep / Delete list adds still win, so the marker only shows on items you haven't categorised yet - which is exactly the case that needs a decision. Also fires for affix-protected items where `IsSellable` returns false, so you can spot a "needs decision" affixed item that the addon won't auto-sell. Detection reuses the existing `EC_compCache.bagSlotAffixData` - no new tooltip scans. Test 88i locks the wiring.
+- **Schema:** one new field, `DB.sellBorderCategories.affix`, additive with the nil-default migration pattern. Safe overwrite from v2.37.4.
+
+### v2.37.4
+
+Patch release. One regression fix from v2.37.3 (the headline), one polish for the v2.37.0 list-tag rendering, plus internal hygiene from three deferred audit items + the multi-stage file split moved to Resolved in the code-review backlog.
+
+- **Fix: Process Bags panel chrome disappearing on second open (v2.37.3 regression).** The v2.37.3 OnHide handler hides `processScrollBg` as a defensive measure against combat-lockdown bleed-through. The original commit described that change as "belt-and-braces with no cost", but it had a cost: subsequent OnShow calls take the refresh path (because `inited` is true) and the scroll background never got re-shown, so the panel looked empty after any panel-switch round-trip. The refresh callback now `Show()`s `processScrollBg` on every entry. Also clears the combat placeholder on a normal OnShow in case it was opened-during-combat then closed without the `PLAYER_REGEN_ENABLED` retry firing. Test 88h locks the helper presence.
+- **Polish: `(affix-gated)` and `(Hit-proc)` tags appear without needing to close + reopen the list panel.** When the tooltip backfill in `EC_AnnotateTooltip` stamps a new entry into `ADB.affixedListedItems` or `ADB.chanceOnHitListedItems`, the open Sell / Account Sell / Keep / Delete List panels now refresh immediately so the new tag shows on the visible row. Previously the panel was rendered with stale data and the user had to switch away and back to see the tag. New `NS.RefreshAllListPanels` walks the four list-panel name globals and calls `listUI:Refresh()` on any that have been opened.
+- **Fix: list side-meta no longer accumulates orphan entries.** `ADB.affixedListedItems` and `ADB.chanceOnHitListedItems` (the side tables that drive the `(affix-gated)` and `(Hit-proc)` row tags) were stamped at add-time + on tooltip backfill but never cleared on remove, so over time the tables grew with itemIDs no longer on any of this character's lists. New `EC_PruneSideMetaForItem` helper checks all four list scopes (per-character sell/keep/delete + account sell) after a remove and clears both meta entries if the itemID is absent everywhere. `EC_RemoveItemFromList` calls it per-id; the list panel's Clear All flow routes through a small `EC_ClearListWithPrune` helper that snapshots itemIDs before `wipe()` and prune-checks each. Alt characters that still have the itemID on one of their lists will see the tag re-stamped on next tooltip hover via the existing backfill in `EC_AnnotateTooltip`. Test 88g in `tests/test_perf_guardrails.lua` locks the helper presence + wiring at both sites.
+- **Internal: `ChatEdit_InsertLink` raw global override now carries an explanatory comment.** The audit flagged the override as one of the few non-`hooksecurefunc` patterns left in the addon. `hooksecurefunc` cannot replace it: the wrapper SHORT-CIRCUITS the original when an EC ID-input box is focused (the shift-click link goes into the EC field, not the chat editbox), and `hooksecurefunc` always runs the original. The comment block makes the design explicit so future auditors don't re-investigate the same dead end. `.luacheckrc` already allow-lists the assignment by name. `docs/CODE_REVIEW.md` gained a new "Audit decisions (won't fix)" section recording the rationale.
+- **Internal: stale `Stage 9` / `EbonClearance.lua` references in file headers cleaned up.** `EbonClearance_Events.lua` and `EbonClearance_Core.lua` had file-header doc blocks framed as "this is Stage 9 of an in-progress refactor" or referencing the pre-rename filename. Rewritten to describe the current state without the historical-context framing. Body comments that cite the old filename for legitimate cross-file context (mostly in other split files) are left alone - those are accurate; only the headers were misleading.
+- **Internal: file split moved to Resolved in `docs/CODE_REVIEW.md`.** The active backlog item 4 ("File split (in progress)") shipped across multiple commits between v2.29.0 and v2.30.0 and was complete; the doc just hadn't caught up. Active backlog now: chat-filter consolidation (1), L10n stub (2, parked), TUNING constants (3, do incrementally when touching tuning code). The historical stage-by-stage table is preserved for reference.
+- **No schema changes.** Safe overwrite from v2.37.3.
+
+### v2.37.3
+
+Patch release. One load-bearing fix for the affix protection labels, one fix for Process Bags during combat, and an audit-driven hygiene pass.
+
+- **Fix: affix rank-needed misfire on items with apostrophes in their PE name.** Items like `Idol of the Moon of Mender's Surge III` were showing `Keep (affix rank needed)` even when the player demonstrably owned the affix at that rank (visible in spellbook, captured in `ADB.affixDebug`). Root cause: PE's `GetItemInfo` returns names with a literal backslash before each apostrophe (`Idol of the Moon of Mender\'s Surge III`); `GetSpellInfo` returns the clean form (`Mender's Surge III`). Both sides ran through `normaliseAffixFamily`, but the backslash byte stayed in the key, so `knownAffixFamilyRanks["mender\'s surge"]` (item-side) did not match `knownAffixFamilyRanks["mender's surge"]` (spell-side). Fix: `normaliseAffixFamily` and `normaliseAffixDesc` now strip literal backslashes before the lowercase step. Affects every affix family containing an apostrophe (`Mender's Surge`, `Keeper's Sting`, `Julie's Blessing`). Diagnosed by adding a `tooltip.affix.lookup` event to the affix-debug log; the `/ec affixdump` bag-walk output showed `name=[of Mender\'s Surge]` with the smoking-gun backslash. Defensive: also normalize curly apostrophes / dashes in case a future PE data source uses U+2019 / U+2014 instead of the ASCII forms.
+- **Fix: Process Bags shows a placeholder during combat instead of building empty.** Clicking `Process Bags` in the Interface Options sidebar while in combat (which bypasses the minimap middle-click defer) used to abort the build callback partway because `SecureActionButtonTemplate` creation and the `SetAttribute("type", "macro")` calls are protected during combat lockdown. The half-built panel set `self.inited = true` mid-way, so subsequent OnShow calls took the refresh path and the panel content area stayed empty. Now: if the panel hasn't been built and we're in combat lockdown, OnShow shows a centered `Process Bags will load when combat ends.` placeholder and arms a one-shot `PLAYER_REGEN_ENABLED` retry that re-fires OnShow when combat drops. The build then runs cleanly with the secure attributes unblocked. Reported in-game on v2.37.x.
+- **Diagnostic: new `tooltip.affix.lookup` event in the affix-debug log.** Each tooltip hover that hits the affix protection block now emits a row capturing the raw + normalised family name, rank, raw + normalised description, and the `playerKnowsDesc` / `playerKnowsRank` results. Gated on `ADB.affixDebugEnabled` so off by default. Lets the next affix label misfire be diagnosed from a `/ec affixdebug dump` rather than by reading source.
+- **Internal: known WoW combat-lockdown quirk acknowledged in code.** Switching FROM Process Bags TO another EC list panel during combat can leave Process Bags' widgets bleeding through behind the new panel - the framework's `Hide()` on a secure-button-containing panel is blocked by WoW. Four attempts to suppress from the addon side all failed because the same protection model blocks `SetAlpha`, individual child `Hide()`, and direct backdrop-overlay approaches. The cast button must stay `SecureActionButtonTemplate` to function at all (Blizzard's post-2.0 security model), so the only structural fix would be reworking the Process Bags UI shape - deferred. Documented in source so future contributors don't re-attempt the same dead ends. Player workaround: collapse the expanded section (Disenchant / Mill / Prospect / Lockpick) before navigating away in combat.
+- **Internal: audit-driven hygiene pass.** Two latent nil-deref risks closed in `EC_AnnotateTooltip` (ADB unguarded reads at the chance-on-hit + tome-protection branches; `EC_compCache.isQuestItem` called without the existence guard used elsewhere). One O(N^2) ring-buffer trim in `AffixDebugDump` rewritten as a single in-place shift + tail-nil sweep so the opt-in affix-debug log can't stall a frame on a spellbook-walk burst. `GetInventoryItemQuality` (a Cataclysm-era API that doesn't exist in 3.3.5a) calls in the iLvl overlay's paperdoll / inspect paths replaced with `select(3, GetItemInfo(link))` for clarity; behaviour unchanged. Eight lines of commented-out third-party price-source stubs in `EC_GetItemPrice` deleted per the project's "delete dead code" policy.
+- **No schema changes.** Safe overwrite from v2.37.2.
+
+### v2.37.2
+
+Patch release. Stats panel polish + a deletion tracker that mirrors the sell side.
+
+- **Stats: Sold by Quality row format.** Per-rarity rows now render as `Poor: x200  -  129g 66s 20c` instead of the dense `Poor: 200 129g 66s 20c`. The grey `x`-prefixed count + ` - ` separator + money matches the Top 5 row format for visual consistency. Reported in-game ("just a long line of numbers").
+- **New: Deleted by Quality section.** Per-rarity counts of items the addon has deleted from your bags via the Delete List path. Mirrors Sold by Quality but with no copper column (deletion produces no money). One new account-wide field (`DB.deletedItemsByQuality`), stamped at the worker delete-action site. Wiped by Reset Lifetime Stats.
+- **New: Top 5 Most Deleted section.** Mirrors Top 5 Most Sold. Reuses the existing `DB.deletedItemCounts` table (populated since v2.34.x), so existing users with deletion history will see entries immediately after upgrading.
+- **Fix: Stats panel scroll-wrap.** The v2.37 sections grew the Stats panel beyond the Interface Options container's natural height; content past that boundary clipped and didn't reflow on UI rescale. Switched the panel to `wrapScroll=true` matching the Main / Scavenger / Merchant / Item Highlighting panels' pattern. The bottom of the panel (Reset buttons) is now reachable via the scroll bar.
+- **Schema:** one new additive account-wide field (`deletedItemsByQuality`); no removals. Safe overwrite from v2.37.1.
+
+### v2.37.1
+
+Patch release. One fix.
+
+- **Fix: the four new v2.37.0 Stats panel sections weren't rendering their content.** Sold by Quality, Top 5 Most Sold, Process Bags Totals, and Top Zones showed only their bolded header followed by `...`, even when the underlying DB fields were being captured correctly. Root cause: `SetWordWrap(false)` on the new multi-line FontStrings collapsed the `\n`-separated row content into a single truncated line. Fix: drop the `SetWordWrap(false)` calls so the default (TRUE) lets the explicit line breaks render. Reported in-game on v2.37.0 release day - "nothing has been entered there after 5 minutes of farming" - the data was there, the panel just wasn't showing it. No schema change; safe overwrite from v2.37.0.
+
+### v2.37.0
+
+Minor release. Three new Stats surfaces, one new bag-border category, four Merchant Settings help links, one load-bearing fix to vendor dispatch ordering, and three community-inspired additions (affix event log + already-known tooltip + item-level overlay) credited to **Ivo** in [NOTICE.md](NOTICE.md).
+
+- **Fix: Delete List wins over sell signals at vendor time.** Pre-v2.37.0 `BuildQueue` checked `EC_IsSellable` first and only fell through to the Delete-List branch when the item was not sellable. A grey item on the Delete List was therefore queued as a sell because greyAutoSell returned true, while the bag tint + tooltip annotation followed the inverse priority order ("delete" wins) so the cycle and the UI disagreed. The dispatch is now reversed: the Delete-List branch fires first, and the sell branch only runs when the slot did not queue a delete. The pre-existing affix-protection block on the delete branch (`manualAllow or isDupe` release) is preserved. `describeSellability` (drives `/ec sellinfo`) gains a parallel `deleteListVerdict` step + a WILL DELETE summary override so the trace agrees with the cycle. **Test 86 / 86a** lock both halves. Behaviour change for users with sellable items on Delete List: those items now get deleted instead of sold; consistent with "explicit user intent overrides auto-rules" design principle.
+- **New: Stats - Sold by Quality breakdown.** A new multi-line block on the Stats panel shows lifetime sells partitioned by item rarity (Poor / Common / Uncommon / Rare / Epic / Legendary / Artifact / Heirloom), each row coloured by Blizzard's quality palette and annotated with count + total copper earned. Two new account-wide DB fields back this: `soldItemsByQuality` (count per rarity) and `soldCopperByQuality` (copper per rarity). Captured at the sell-success site in both the manual (UseContainerItem hook) and worker (auto-cycle) paths, so both Alt+Right-Click sells and the BuildQueue cycle attribute correctly. Empty buckets are hidden; the block reads `None yet` until the first sell. Reset Lifetime Stats wipes both fields.
+- **New: Stats - Top 5 Most Sold.** The single-line `Most Sold Item: ...` row expands into a five-row block ranked by lifetime sell count (count desc, then itemID asc on ties). Renders up to five entries; reads `None yet` when `soldItemCounts` is empty. The pre-existing `GetMostItem` helper was generalised to `GetTopNItems(countTable, n)` so the same path can drive any "top N" view that wants per-item counts.
+- **New: Stats - Process Bags lifetime totals.** Four counters - Disenchanted / Milled / Prospected / Lockboxes Picked - track every successful Disenchant / Milling / Prospecting / Pick Lock cast across the character's lifetime. Counts both Process Bags-driven and manual casts so the totals reflect the player's actual profession activity rather than just Process Bags usage. `Opening` is excluded from the increment (fires on every container right-click and would over-attribute). Empty rows hidden; reads `None yet` when no casts have landed. One new DB field (`processCastCounts`), wiped on Reset Lifetime Stats. Driven by the existing `UNIT_SPELLCAST_SUCCEEDED` handler that already powers the GPH-related Scavenger guards; one branch added.
+- **New: Stats - Top Zones (gold earned).** A five-row block ranks zones by lifetime gold earned at sell time. Both the manual sell hook and the worker-cycle FinishRun stamp the current `GetRealZoneText()` against `DB.copperByZone`. Empty zones / `""` falls back to `Unknown`. Reads `None yet` when no zone has yet accumulated a sell. Reset Lifetime Stats wipes the table.
+- **New: Bag-slot border - Keep List category.** A sixth sell-border category, `keep`, paints a distinct slot border on items the player MANUALLY added to the Keep List (`DB.blacklist` AND NOT `DB.blacklistAuto`). Pure visual-reassurance feature - confirm at a glance that important items won't be touched at a vendor. Equipped / upgrade / set-tagged auto-protections are deliberately EXCLUDED from the border (those are addon decisions, not user reassurance targets); the brainstorm session explicitly scoped this to "Keep List entry (manual)" only. Default colour: soft cool white (`r=0.95 g=0.95 b=1.00`), distinct from the existing palette (red / green / cyan / grey / gold). Insert position in `bagSlotWillSellCategory`: after Delete, before the `IsSellable` bail (Keep-listed items return false from `IsSellable` so the check has to short-circuit before that bail). **Default OFF** - the only sell-border category that ships disabled on first install. Every existing category (Delete / Account Sell / Character Sell / Junk / Rule) keeps its v2.36.x `enabled = true` default; Keep is opt-in so existing players don't pick up a new tint on their bags after upgrading without ticking the row. Existing per-category enable + colour-picker UI in Item Highlighting picks the new row up via one table-row addition. **Tests 87 / 87a / 87b / 87c** lock the four touch points. Spec at `docs/specs/2026-05-28-keep-highlighting-design.md`.
+- **New: four Merchant Settings help entries + `[?]` icons.** `gate-repair` (Repair gear while selling), `gate-guild-bank-repair` (Repair from guild bank), `gate-keep-bags-open` (Keep bags open after a vendor), `gate-fast-mode` (Fast Mode pacing). All four wired with the GetStringWidth + LEFT-to-LEFT anchor pattern used by Scavenger / Stats / Profiles / Import-Export so the icon docks against the toggle's text instead of the panel's right edge. Closes the audit gap from v2.36.0's [?] rollout where four Merchant rows had no help-link.
+- **Fix: Process Bags FAQ wording corrected.** The five Process Bags entries in the Help panel (`process-bags-overview`, `process-disenchant`, `process-mill`, `process-prospect`, `process-picklocks`) described the workflow as "arms your cursor with the matching spell or item" - that was wrong. The actual workflow is the panel's Cast button (a SecureActionButton with `/cast {spell}\n/use {bag} {slot}` macrotext) that the user clicks for each cast. Rewrote all five entries to describe the Cast-button flow and the panel-side queue.
+- **New: affix-pipeline event log + `/ec affixdebug` slash sub-command.** A structured event logger captures six probe sites in the PE roguelite-affix pipeline (`bag.affix.cache` hits, `bag.affix.scan` fresh scans, `spellbook.affix.hit`, `extraction.affix.hit`, `knownAffixes.start`, `knownAffixes.done`) when `ADB.affixDebugEnabled` is on. Off by default; recorded rows live at `ADB.affixDebug` with a 1000-row ring buffer. `/ec affixdebug on|off|status|clear` toggles + inspects; `/ec affixdebug dump` opens a copyable window with the structured log so a player hitting a tooltip-vs-vendor divergence can ship the event trail in a bug report. `/ec bugreport` now surfaces the row count in its diagnostic snapshot with a hint to include the dump too. No overhead when off (one nil check + early return). **Test 88** locks the function + six probe sites + slash handler.
+- **New: "Already known by this character" tooltip annotation.** A grey one-liner under the EC verdict on any tome / recipe item the current character has already learned, surfaced regardless of the protection toggles. Always-on; reuses the existing `tomeIsKnownCache` so no extra cost. Skipped when the existing tome-protection block already shows "(Tome you have)" / "(Recipe you have)" so the same info doesn't render twice. Helps players make informed sell-vs-save-for-alts decisions on duplicate tomes; PE-specific value because tomes / recipes are per-character (unlike `@affix@` items which save account-wide). **Test 88a** locks the annotation + dedupe.
+- **New: item-level text overlay on equippable gear (opt-in).** Quality-colored "N" in the bottom-right corner of slot buttons holding equippable gear (`equipLoc` whitelist; consumables / quest items / non-gear skipped). Three independently togglable surfaces under a master toggle in Item Highlighting: bags (containers + bank, default ON when master flips on), character sheet & inspect (default OFF), merchant (default OFF). Master toggle defaults OFF so existing v2.36.x players pick up no new visual on upgrade. Sub-toggles grey out when the master is off. Hooks `ContainerFrame_Update`, `BankFrame:OnShow`, `PaperDollItemSlotButton_Update`, `InspectPaperDollItemSlotButton_Update`, `MerchantFrame_Update`. Host bag-UI adapter (`EC_compCache.installHostBagItemLevelHook`) hooks the two supported third-party bag UIs the existing sell-border code already covers, so the bags surface paints when those replace the default container frames. Player-adjustable font size (slider 6-20, default 12) under the sub-toggles; the slider greys out alongside the master toggle. The panel is now scroll-wrapped so the new section can't push existing content off the visible area. Renderer lives in `EbonClearance_BagDisplay.lua` (`EC_compCache.applyItemLevelOverlay` + the `EC_ITEM_LEVEL_EQUIP_LOCS` whitelist + `EC_applyItemLevelFont` for dynamic sizing). **Tests 88b / 88c / 88d** lock the DB schema, renderer, equipLoc gate, panel UI, slider, host hook, and scroll-wrap. This is the first per-slot icon-area text shipped by EC; the previous no-icon-overlays design rule was narrowed (not retracted) to allow informational text gated behind explicit user opt-in.
+- **Fix: affix protection wins over chance-on-hit in the tooltip annotation.** When an item carries BOTH a PE roguelite affix AND a chance-on-hit proc, the tooltip used to show `Keep (chance-on-hit proc)` because the chance-on-hit annotation block ran after the affix block and overwrote its label. Reported in-game on `The Untamed Blade of Feral Grace II` (an Epic 2H with the "Feral Grace II" affix + chance-on-hit Strength proc). The affix is the more meaningful label - in Project Ebonhold, a chance-on-hit can't be extracted from an item that already has an affix (the affix has to come off first), and the affix is typically what the player wants. Fix: the chance-on-hit annotation block now detects an existing `Keep (affix rank known/needed)` label and leaves it alone. The sell-side + delete-side ordering in `EC_IsSellable` / `BuildQueue` already checks affix before chance-on-hit, so this aligns the tooltip with the existing decision behaviour. **Test 88a-precedence** locks the dedupe pattern.
+- **New: `(Hit-proc)` tag on list entries with a chance-on-hit proc.** Mirrors the existing `(affix-gated)` tag in the Sell / Keep / Delete list panels. Reminds the player that the chance-on-hit protection still filters per-drop even though the base itemID is on a list - adding the itemID to a Sell List doesn't blanket-sell every future drop. New account-wide `ADB.chanceOnHitListedItems` table, stamped both at list-add time (Alt+Right-Click menu) and during the tooltip hover backfill so pre-v2.37 entries pick up the tag the first time the player hovers them. Both tags can render on the same row when an item has both signals. **Test 88e** locks the four touch points (schema / add-stamp / tooltip backfill / list render).
+- **New: `/ec bugreport` lists loaded addons.** A new "--- Loaded Addons ---" section walks `GetNumAddOns()` and lists every currently-loaded addon by name + title + version. Maintainer can spot bag-management / vendor / loot addons that may race with EC's hooks straight from the report, instead of asking "what else are you running?". Disabled addons are excluded (they can't conflict). Version strings come from each addon's `## Version:` TOC field when present.
+- **New: `/ec affixdebug` listed on the Main panel slash-command reference** so the diagnostic command is discoverable without typing `/ec help`. **Test 88f** locks the presence.
+- **Polish: item-level overlay paints under host bag UIs without an open-close dance.** The FontString sublevel was bumped to 7 (OVERLAY max) so it renders above per-slot quality borders and stack-count text painted by host bag UIs. `NS.RefreshItemLevelOverlay` now also nudges the host bag-UI frameworks to repaint when the bags surface is enabled, so ticking the "On bags" sub-toggle takes effect without the player having to open + close their bags to see the text appear.
+- **No schema-breaking changes.** Four additive account-wide DB fields (`soldItemsByQuality`, `soldCopperByQuality`, `processCastCounts`, `copperByZone`), one new key on the existing `DB.sellBorderCategories` map (`keep`), one new account-wide debug flag (`ADB.affixDebugEnabled` + lazy `ADB.affixDebug` table), and one new per-character nested table (`DB.itemLevelOverlay = { enabled, bags, paperdoll, merchant }`). All gated by `EnsureDB`'s nil-default pattern so existing saves auto-migrate on first v2.37.0 load. Top-level `EbonClearanceDB` keys are unchanged for downgrade safety. File count unchanged at 25. Safe overwrite from v2.36.0.
+
+### v2.36.0
+
+Minor release. Three sizeable features and one load-bearing fix.
+
+- **New: Help / FAQ sub-panel.** A new `EbonClearanceOptionsHelp` sub-panel at the bottom of the EbonClearance Interface Options tree. Six collapsible sections (Getting started, Troubleshooting, How sell decisions work, Tooltip labels, Process Bags, Reporting bugs) with ~60 question/answer entries between them. Section headers click to expand or collapse; the per-character expand state is saved (`helpSectionsCollapsed` in PER_CHAR_FIELDS). The Reporting bugs section has a copyable Discord thread URL that pops up a `StaticPopup` with the URL pre-selected so the player can Ctrl+C and paste into a browser (WoW 3.3.5a has no clickable browser-URL hyperlinks in chat). `/ec help` now ends with a pointer line to this panel.
+- **New: `[?]` help-link icons across every settings panel.** Each setting in Protection / Merchant / Scavenger / Item Highlighting / Process Bags / Sell List / Account Sell List / Keep List / Delete List / Profiles / Import-Export / Main / Stats has a small yellow `[?]` next to its label. Clicking opens the Help panel, auto-expands the section containing the linked entry, scrolls the entry to the top of the viewport, and briefly pulses the entry's question text bright cyan so the player's eye lands on it. The link target is a stable id (e.g. `gate-equipped-never-sells`, `process-disenchant`) attached to each Help entry - renaming the displayed question text doesn't break the link. **Test 78** asserts every panel-referenced id resolves to a real entry in `EC_HELP_ENTRIES`; the build fails loudly on drift.
+- **New: dedicated Stats sub-panel.** Stats widgets (money earned, items sold, items deleted, repairs, repair cost, session and best gold-per-hour, average inventory worth, most sold item) move off the Main panel onto their own `EbonClearanceOptionsStats` sub-panel positioned between Item Highlighting and Sell List in the sub-panel tree. The Main panel now reads as a welcome page - heading, feature list, Alt+Right-Click tip, slash command list, no stats. `NS.RefreshStats` and `NS.ResetLifetimeStats` hoist out of `EbonClearance_MainPanel.lua`'s OnShow closure and live at file scope on the NS namespace; the data-change handlers in `EbonClearance_Events.lua` continue to call them unchanged. Reset Session and Reset Lifetime buttons both live on the Stats panel (side by side); the Reset Lifetime confirmation popup is preserved. **Tests 80 / 80a / 80b / 80c** lock the split.
+- **Fix: Process Bags Mill / Prospect detection was silently broken on Project Ebonhold.** Two interlocking bugs hid the PROSPECT section even for players with Jewelcrafting trained and prospectable ore in their bags.
+  1. `processTooltipHasLine` (Mill / Prospect tooltip-scan helper) compared each tooltip line to the marker via byte-exact equality. PE renders the marker line with inline color codes (`|cFFFFFF00Prospectable|r`), so the bare compare against `"Prospectable"` never matched. New `normaliseTooltipLine` helper strips `|c...|r` color tokens and outer whitespace before the compare.
+  2. `canMill` and `canProspect` shared one `processCache` with a `"none"` sentinel meaning "scanned, no match found" - but ambiguous about WHICH marker was searched. With both Inscription AND Jewelcrafting trained, the bag walk hit `canMill` first for every item; ore missed the Millable check and got cached as `"none"`; `canProspect` then returned false without ever scanning for Prospectable. `processTooltipHasLine` now does ONE pass per itemID checking both markers and caches the actual classification (`"Mill"` / `"Prospect"` / `"none"`). **Tests 84 / 85** pin both fixes.
+  Player-facing surface: Keep List items are intentionally hidden from Process Bags candidate lists (the v97bd471 skip-gate). v2.36.0 surfaces this in two places so the gotcha is discoverable: a Troubleshooting entry in the Help panel ("My herbs / ore aren't showing in Process Bags.") with an Open Keep List button, plus a grey tip line on the Process Bags panel itself.
+- **Internal: panel description simplification pass.** Protection Settings and Merchant Settings used to carry multi-line explanation notes under every toggle that duplicated content now in the Help panel. Those notes were stripped panel-wide; the toggles' inline `[?]` icons are the deep-link surface for "what does this do?". Protection Settings drops ~12 explanation lines for ~2-3 lines of action guidance; Merchant Settings similarly. Action-guidance lines (the ones that tell the player HOW to use the panel) stay; only descriptive duplicate text is removed.
+- **Internal: new test invariants pin the help-link infrastructure.** Test 73 expects all six section markers in `EC_HELP_ENTRIES`. Test 74 asserts at least 40 content entries. Test 75 pins the chrome backdrop pattern (UI-Tooltip-Border + edgeSize=12 + warm brown tint). Test 76 confirms `helpSectionsCollapsed` is in `PER_CHAR_FIELDS`. Test 77 checks `/ec help` mentions the Help panel. Tests 78 (cross-reference integrity), 79 (id uniqueness), 82 (`NS.AddHelpIcon` exists in PanelWidgets), 83 / 83a (`NS.OpenHelpEntry` API + delayed scroll + flash + generation guard). All three suites green at v2.36.0 tag time.
+- **Schema changes**: one additive per-character field (`helpSectionsCollapsed`, table mapping section keys to booleans). No removals. The PER_CHAR_FIELDS partition added in v2.34.0 routes the new field correctly. File count grows from 23 to 25 (`EbonClearance_HelpPanel.lua` and `EbonClearance_StatsPanel.lua` are new). Safe overwrite from v2.35.1.
+
+### v2.35.1
+
+Patch release. Three fixes for the PE roguelite-affix tooltip + protection path, all responding to in-game bug reports.
+
+- **Fix: tooltip label scheme simplified to a collector-focused two-state form.** The v2.32.x three-label scheme (`Keep (new affix)` / `Keep (affix you have)` / `Will Sell (you have this affix)` for the unknown / known / known-and-allowed-to-sell states) had a hidden gap: PE's item-side `@affix@` text and spell-side engraving-description text occasionally disagree at the same rank (e.g., a rank II "Overwhelming Force II" item reads "Increases your damage and healing done by 2%" while the rank II engraving spell reads "Increases damage and healing done by 4%" - same rank, different wording AND different magnitude). The description-only catalog match silently failed in that case and the label fell to `Keep (new affix)` even though the player demonstrably owned the family at that rank. v2.35.1 introduces a parallel `knownAffixFamilyRanks` map - `family -> set-of-ranks` - populated by the same spellbook walk + ExtractionService merge that drives the description catalog. The tooltip checks the (family, rank) pair when the description-text match misses, so PE's same-rank-text-disagrees case is correctly labelled as "rank known". The label set itself was simplified to two states framed as "do I need this specific rank?": `Keep (affix rank known)` (player owns this exact rank) and `Keep (affix rank needed)` (player doesn't own this rank, whether the family is unknown or known at a different rank). The earlier "Keep (other rank known)" label was collapsed into "needed" because the collection-side question is binary - "do I need this exact rank?" - and the noise around "I have a different rank" wasn't actionable for the user. The `Will Sell (you have this affix)` autoDupe label still fires when dupe-allow + ownership + an upstream Will Sell verdict all hold.
+- **Fix: tooltip-vs-vendor divergence on items whose live-tooltip description can't be read.** PE post-processes the live `GameTooltip` (strips the `@affix@` markers, colourises the line purple). The offscreen `EbonClearanceScanTooltip` isn't touched, so `bagSlotAffixData` (used by `/ec sellinfo` and `EC_IsSellable`) gets the raw markers and resolves the description cleanly via Path 1 of `scanTooltipForAffixDesc`. `liveTooltipAffixData` (used by the tooltip annotation) reads off the live frame and can't recover the description text - Path 1 fails because the markers are gone, Path 2 fails because PE's text disagrees with the catalog. Result: `affix.description = nil` -> `manualAllow` and `autoDupe` both compute as false -> the tooltip fell through to the `Keep (affix rank known)` label even when the item was on the Account Sell List with the affix manually Allow-Sell'd and `/ec sellinfo` correctly reported `WILL SELL`. Fix: when the live read returns nil, backfill the description from `affixDataCache[itemString]` (warm for users with sell-border tinting since `bagSlotAffixData` has been called on every visible slot) or as a fallback walk bags to find the matching link and run `bagSlotAffixData` once (cold cache; populates for the next hover). Tooltip annotations now agree with the merchant cycle on the same item.
+- **Fix: `autoDupe` widened from description-only to (description OR family + rank) match.** Original v2.23.0 design checked description text only, which silently failed for PE's same-rank-text-disagrees case above. Items the player demonstrably owned at this rank stayed protected even with `affixAllowExactDupes` on; the v2.35.1 tooltip label said "Keep (affix rank known)" while the merchant cycle correctly kept the item, so tooltip + vendor agreed but the user couldn't make dupes vendor short of manually Alt+Right-Click -> Allow Sell on every affix description that PE writes differently between item and spell. Now `autoDupe = DB.affixAllowExactDupes and (descKnown or rankKnown)` across `EC_IsSellable`, `EC_AnnotateTooltip`, and the `describeSellability` trace path - all three sites release the affix veto consistently when ownership is established via either match. `Allow exact-rank duplicates` remains a release gate (not a positive sell signal), so items still need an upstream Sell List entry or quality-rule match to vendor; the change only widens the release-recognition surface. The `/ec sellinfo` trace gains a new sub-tag `affix present but allow-listed (rank dupe via family match)` to distinguish the two release paths.
+- **Internal: 9 new Test 70 assertions lock the family + rank fallback structure** (PER_CHAR_FIELDS membership of the three new GPH fields was already covered by Test 68; Test 70 covers the spellbook walk's (family, rank) capture, the synchronous merge path, the catalog publication, and the two-state label scheme). All three invariant test suites pass.
+- **No schema changes; no new SavedVariables fields.** File count still 23. Safe overwrite from v2.35.0.
+
+### v2.35.0
+
+Minor release. New feature: gold-per-hour stats on the Statistics panel. Also bundles the Most Sold Item regression fix that was tagged as v2.34.1 but couldn't ship as a standalone release due to a multi-hour GitHub Actions incident (the `softprops/action-gh-release` download was unreachable for ~3 hours; `GITHUB_TOKEN` push permission was returning HTTP 403 even after the action download recovered).
+
+- **New: Session Gold/Hour stat.** Live rate (copper/hour) computed from `EC_session.copper / elapsed-seconds`, displayed on the Statistics block between `Total Repair Cost` and `Average Inventory Worth`. Includes the elapsed session time as a small grey suffix (e.g., `Session Gold/Hour: 145g 23s 4c  (5m 12s)`). A 10-second floor on the elapsed value prevents sub-second extrapolation right after `/reload` or after the Reset Session Stats button (the line reads `-  (computing...)` until 10 s elapses). The session timer resets on `/reload` (in-memory wipe) and on the Reset Session Stats button. AFK time dilutes the rate downward, which is self-correcting: the Best update gate only fires on upward movement, so AFK time can't inflate the record.
+- **New: Best Gold/Hour stat (per-character, persistent).** The highest sustained session-GPH this character has ever achieved, plus the zone where it was set and a humanised "when" sub-line. Best line examples: `Best Gold/Hour: 234g 56s 7c\n  in Stranglethorn Vale, 3 days ago`. The "when" rolls from `just now` → `N minute(s) ago` → `N hour(s) ago` → `N day(s) ago` → `YYYY-MM-DD` after 30 days. Reads `-` when never set. Three new per-character `EbonClearanceDB` fields back this: `bestGPH` (copper/hour), `bestGPHAt` (`time()` epoch seconds), `bestGPHZone` (`GetRealZoneText()` snapshot at update time). All three are written atomically by the update gate so the second-line context never disagrees with the rate.
+- **Best update gate: 5-minute minimum session.** The best record only updates when the session has been running for at least 300 seconds AND the current session GPH exceeds the stored best. This filters early-session burst noise: pre-fix, selling a single grey 3 seconds after `/reload` would extrapolate to "1800 g/h" and pin the best forever. The gate's a soft heuristic, not a precise filter; a legitimate 5+ minute farm at any rate still counts. The three best-record fields are added to `PER_CHAR_FIELDS` so the v2.34.0 per-character partition migrates them correctly: every character has their own record, no cross-character contamination. **Test 68** locks the per-character field membership; **Test 69** locks the 5-minute gate, the 10-second floor, the atomic write of all three fields, and the Reset Lifetime cleanup.
+- **Reset Lifetime Stats now wipes the best-GPH triple.** Same opt-in semantics as the existing lifetime-stat reset (zeroes `totalCopper`, `totalItemsSold`, etc.); the user has explicitly chosen to wipe lifetime state and the best record is part of that. Reset Session Stats does NOT touch the best record - that's session-level state.
+- **Fix (bundled from the unreleased v2.34.1): `Most Sold Item` resolves to the item name, not a bare `ItemID: NNN` fallback.** Originally tagged as v2.34.1 on 2026-05-26 but the release pipeline was blocked by the GitHub Actions auth incident. Root cause described in the v2.34.1 stanza below; included in v2.35.0 by virtue of all v2.34.1 commits being on master at v2.35.0 tag time. Users upgrading from v2.34.0 get both fixes in one install.
+- **Internal: `workflow_dispatch` trigger added to `.github/workflows/release.yml`.** Recovery path for missed tag-push triggers (the v2.34.1 release failed when a GitHub Actions degradation silently swallowed the push event). A maintainer can now manually fire the Release workflow against any existing tag via the GitHub UI or `gh workflow run release.yml --ref master -f tag=vX.Y.Z`. Job-level env var `RELEASE_VERSION` reads from `inputs.tag` on dispatch or falls back to `github.ref_name` on tag-push, so the version-injection / changelog-extraction / create-release steps work identically under either trigger.
+- **No schema changes beyond the three additive per-character fields above (`bestGPH`, `bestGPHAt`, `bestGPHZone`).** No removals. File count still 23. Safe overwrite from v2.34.0 / v2.34.1.
+
+### v2.34.1
+
+Patch release. One regression fix on the Statistics panel.
+
+- **Fix: `Most Sold Item` now resolves to the item name, not a bare `ItemID: NNN` fallback.** `ItemLabel` in `EbonClearance_MainPanel.lua` called `GetItemInfo(id)` and rendered `ItemID: <n>` whenever the function returned nil (cold client-side cache). Pre-v2.34.0 the sold-counts table was account-wide, so the "Most Sold Item" itemID was typically something the current session had already loaded via inventory / loot / merchant interactions on the active character. Post v2.34.0 per-character partition, each character inherits a snapshot of accumulated counts that may include items the current character has never personally seen this session - and those items aren't in the client cache at panel-open time. The display fallback was always present; the migration just made the cold-cache path the common case. Fix: trigger a `NS.scanTooltip:SetHyperlink("item:<n>")` warmup the moment GetItemInfo misses, and schedule a single re-render ~0.6 s later via `NS.Delay`. The first paint still shows the ItemID string, then the line updates to the resolved name once the client receives the data (typically 100-300 ms). A `_statsWarmupPending` flag on the panel prevents stacked re-renders if the panel is rapidly toggled. Closes the regression introduced by v2.34.0's per-character partition (filed in-game).
+- **No schema changes; no new SavedVariables fields.** File count still 23. Safe overwrite from v2.34.0.
+
+
+
+Substantive release. The headline is a long-latent saved-variables bug: `EbonClearanceDB` has been declared `## SavedVariables:` (account-wide) since the initial commit, even though the docs, the codebase, and the user mental model treated it as per-character. Every multi-character user has had their Keep / Sell / Delete lists, profiles, and auto-tag state silently shared across alts. Reported in-game as the auto-Keep-equipped tag leaking onto a freshly-logged main from an alt that had worn the item; root cause has been there for ~30 releases. Also includes a silent-failure bug in Process Bags' Keep List skip-gate (Stage 7 extraction regression), an affix cache-poison that diverged the tooltip protection label from the vendor cycle's actual behaviour, and an audit-driven cleanup pass with five perf fixes plus a handful of dead-code removals.
+
+- **Fix: per-character partition of `EbonClearanceDB`.** Restores the documented per-character semantics for lists / profiles / per-mode preferences without a `## SavedVariables` directive change (which would risk cross-character data loss because WoW serialises per-saved-variable-name). Mechanism: in-table partition. Top-level `EbonClearanceDB.<field>` remains as the legacy snapshot - it serves as the seed every newly-migrated character deep-copies on first load AND the downgrade safety net (a v2.33.x-or-earlier client looking for `DB.blacklist` still finds its pre-migration baseline). Live per-character data lives at `EbonClearanceDB.chars[<character>-<realm>]`. `DB` is a metatable proxy that routes per-character fields to `chars[charKey]` and everything else to the top level, so every existing `DB.foo` call site keeps working unchanged. **Test 66** locks 16 structural invariants. PER_CHAR_FIELDS: `blacklist`, `blacklistAuto`, `whitelist`, `deleteList`, `whitelistProfiles`, `blacklistProfiles`, `activeProfileName`, `processIgnored`, `processCollapsedModes`. Stats (`totalCopper`, `soldItemCounts`, etc.) and settings stay account-wide so cumulative numbers don't fragment across alts. The `PLAYER_LOGOUT` branch's `EbonClearanceDB = DB` mirror was removed - with `DB` as a proxy, that assignment would overwrite the SavedVariable with the empty proxy table on serialisation. `docs/ADDON_GUIDE.md` was corrected to reflect actual `## SavedVariables` (account-wide) semantics; the earlier "per-character by default" claim was wrong.
+- **Fix: cross-character cleanup of auto-Keep contamination.** The initial migration above deep-copies the legacy snapshot into every newly-migrated character's namespace. That correctly preserves manual user adds (Alt+Right-Click → Add to Keep / Sell / Delete) but also carries forward auto-added entries stamped pre-migration by some OTHER character (equipped gear, looted upgrades, equipment-set items). Symptom: the main picks up an item that only the alt ever wore and the tooltip still says `Keep (equipped)`. Cleanup runs once per character (gated by a `_migratedV2` flag on the character's namespace), drops blacklist + blacklistAuto entries that match the legacy snapshot's `blacklistAuto` map (those are by definition auto-added pre-migration), and arms `pendingFreshInstallSync` so `PLAYER_LOGIN`'s existing 2 s settle delay runs `syncEquipped` to re-add the character's actual currently-equipped gear under their own login. Manual entries (no `blacklistAuto` tag) are preserved. **Test 66** extension locks the cleanup invariants.
+- **Fix: Process Bags Keep List skip-gate silently failed.** A user with a Keep-listed Disenchantable item would see it appear in the Process Bags queue and could accidentally DE it. Root cause: Stage 7 of the file-split refactor (commit `a24be7d`) moved the Process Bags engine to `EbonClearance_Process.lua` but silently dropped the file-local `IsInSet` helper that the bag walk's skip-gate referenced. The gate was written as `if not skip and IsInSet and IsInSet(DB.blacklist, itemID) then` - the defensive `IsInSet and` short-circuited on the unresolved bare `IsInSet` (resolving to global nil) and the skip-gate never fired. Fix: add the missing helper and drop the defensive guard. **Test 65** (per-file invariant) locks that any source file calling `IsInSet` must also define / import it, and bans the `IsInSet and IsInSet(` defensive pattern because it hid this bug.
+- **Fix: affixed Rare / Epic items could vendor despite tooltip showing `Keep (new affix)`.** Reported by an in-game user; symptom is a tooltip-vs-vendor divergence. Root cause: `EC_compCache.bagSlotAffixData(bag, slot)` (used by `EC_IsSellable`'s affix gate) cached `false` unconditionally whenever `parseAffixFromTitle` returned nil. Fresh affixed drops sometimes hit `bagSlotAffixData` BEFORE the link's suffix-DBC field had finished resolving client-side, so the offscreen scan tooltip's TextLeft1 was still the bare base name. The cold-tooltip scan failed to parse, cached `false` permanently for that session, and the vendor cycle silently lost the affix gate - while the live-tooltip path (`liveTooltipAffixData`, no cache) kept reading the now-populated title and correctly identifying the affix. Fix: only cache `false` when the title positively identifies the item as not a PE roguelite affix (non-empty title that doesn't end with a trailing roman-numeral rank suffix). Empty / ambiguous titles are NOT cached, so the next call retries cleanly after the link finishes loading. Standard random-suffix items (`of the Bear`, `of the Sorcerer`) still cache cheaply because their title has no roman suffix. **Test 67** locks the discriminator.
+- **Fix: combat-deferred chat spam after the v2.34 audit.** During the audit a tester rogue-leveling with lockboxes in bag saw `Containers deferred until out of combat.` fire repeatedly across short mob fights. Root cause: the original implementation walked all 5 bags with a 30-line tooltip scan per slot to print an exact count (~80 tooltip scans on the first `BAG_UPDATE`-during-combat); the audit replaced that with an unconditional one-line announce gated by a per-combat flag cleared on `PLAYER_REGEN_ENABLED`. With continuous combat, the flag cleared each combat exit and the next combat re-announced. Fix: short-circuit openable scan (bail on first openable found, so the worst case is one bag walk per `/reload`) + flag is now session-scoped (never cleared at `PLAYER_REGEN_ENABLED`). User sees the line at most once per `/reload` when openables exist in bag.
+- **Perf: bag-slot sell-border paint computes the per-slot verdict once, not twice.** The four host-hook + default-bag call sites of `applySellBorder` were calling `apply(button, willSell(bag, slot), bag, slot)`. The second argument was named `_` (ignored) inside `applySellBorder`, which then re-derived the verdict internally via `bagSlotWillSellCategory(bag, slot)`. The pre-computed boolean was discarded; the predicate ran twice per slot per paint. Removed the wasted call sites + simplified the `applySellBorder` signature to `(button, bag, slot)`. Cuts per-paint sellability evaluation roughly in half across the default `ContainerFrame_Update` hook, the legacy AceAddon-3.0-registered host bag UI hook, the engine-table-exposure host bag UI hook, and `NS.RefreshSellBorders`.
+- **Perf: Greedy Scavenger speech-bubble walker is O(n), not O(n²).** The 200 ms-ticking OnUpdate body in `EbonClearance_Companion.lua`'s bubble killer iterated `WorldFrame:GetChildren()` via `select(i, WorldFrame:GetChildren())` and each child's regions via `select(j, child:GetRegions())`. `select(i, ...)` against a varargs of n items is O(n) per call, making the nested walk O(children^2 × regions^2). In a busy raid (numChildren ~80 with floating combat text) the walk produced tens of thousands of select operations per 200 ms tick. Switched both iterations to materialise the varargs into a local table once and index it.
+- **Perf: `CHAT_MSG_SYSTEM` dropped from the Greedy chat-filter registration.** The filter was registered on 10 chat events including `CHAT_MSG_SYSTEM`. System messages never carry the pet as their author, so the filter could never produce a useful hide, but the `EC_StripCodes` gsub chain + substring scan still ran on every system message line. One event registration removed; saves the dispatch + scan cost per system message.
+- **Perf: tooltip annotation hoists `GetItemInfo(id)` once.** `EC_AnnotateTooltip` used to call `GetItemInfo(id)` three separate times across the whitelist / qualityRules / affix branches, each reading a different subset of the same cached tuple. Hoisted to a single call at the top of the function; each branch captures the field aliases it needs. Uncached items still surface as `Won't Sell (no value)` via the existing `sellPrice` nil-guard.
+- **Refactor: `NS.IsInSet` single canonical definition (Core).** Pre-refactor there were six file-local copies across `Vendor`, `Process`, `Tooltip`, `BagDisplay`, `BagContextMenu`, `Events` - with two different semantics: the Vendor and the pre-fix first BagDisplay copies used a lenient `~= nil` check while the others were strict (`== true or == 1`). DB only ever stores `true` today so the difference was latent, but same-name-different-semantics is a refactor footgun and the Process Bags Stage 7 bug above showed the duplication is actively hazardous. Canonical `NS.IsInSet` now lives in `EbonClearance_Core.lua` with the strict semantics; each consumer captures it as a file-local upvalue (`local IsInSet = NS.IsInSet`) so per-call cost stays at one local read. Net: ~36 LOC of duplication removed; **Test 65** locks the per-file invariant against future drift.
+- **Refactor: `destinationLabel` helper in `EbonClearance_Tooltip.lua`.** The affix and tome annotation blocks each carried a near-identical "rewrite verdict to destination list label, or pick a fallback" precedence chain. Centralised into `destinationLabel(id, currentLine)` near the top of the file. Future protection rules can reuse the helper without re-implementing the precedence; the chance-on-hit block keeps its existing shape (slightly different semantics).
+- **Refactor: `BagDisplay.lua` duplicate `IsInSet` shadowing fixed.** A second definition at file scope had silently superseded the first since the file's extraction. Removed; behavior unchanged.
+- **Dead code: `BagContextMenu.lua` unused `IsInSet` binding removed.** The file never called the helper - it delegated set-membership questions to the list-mutation helpers in `EbonClearance_Events.lua`. Replaced the binding + docstring with a one-line note about why it's intentionally absent.
+- **Dead code: P5 base optimisation.** Original audit dropped the in-combat container-count walk (~80 tooltip scans on the first `BAG_UPDATE`-during-combat purely to print an exact count). User notice now reads `Containers deferred until out of combat.` without enumerating; the driver still resumes on `PLAYER_REGEN_ENABLED`. See the deferral-spam fix above for the session-scoping that followed.
+- **Defensive: `EC_TryResummonScavenger` self-gates on `DB.summonGreedy`.** Responds to an earlier in-game report of post-merchant Scavenger summons firing with the option unchecked. Static analysis found no current bypass path - the only caller is `EC_PetCheckTick` which already gates on the flag - but the in-function gate makes the contract impossible to violate from any future caller that forgets the outer guard. **Test 64** locks the gate at the top of the function.
+- **Schema:** two new fields on `EbonClearanceDB`. `chars` (table; per-character sub-namespaces keyed by `<character>-<realm>`) and each `chars[charKey]._migratedV2` (boolean; one-shot cleanup gate). Top-level per-character fields stay populated as the legacy snapshot (downgrade safety net + migration seed). Additive / idempotent. No removals.
+- **File count unchanged:** still 23 source `.lua` files. Safe to overwrite over an existing v2.33.x install - no "delete the EbonClearance folder first" warning required for this release. The cross-character cleanup runs once per character on first `/reload` after install; expect the auto-Keep tag to drop off items the current character never independently equipped, and the live sync to re-tag the character's actual currently-worn gear within 2 seconds of login.
+
+
+
+Patch release. Two bug fixes for the auto-protect-upgrades path plus a copy correction. Credits to **Perfect Bidoof** for the original report.
+
+- **Fix: 1H weapons no longer falsely kept as "possible upgrade" when the player wields a 2H.** Reported by **Perfect Bidoof** ("I have the problem that it considers a lot of green items which are far below equipped items possible upgrades and doesnt sell them"). Root cause: `EC_compCache.isDowngradeVsEquipped`'s loop bailed with `empty_slot` the moment it hit any empty candidate slot. The bailout is correct for dual-wielders with one weapon equipped (a new 1H could legitimately fill the offhand) but wrong when the main hand holds a 2H - the offhand is locked, not unfilled. Fix narrows the candidate slot list for `INVTYPE_WEAPON` from `{16, 17}` to `{16}` when `GetInventoryItemLink("player", 16)` reports the main hand is `INVTYPE_2HWEAPON`, so the comparison runs against the equipped 2H's iLvl. Single-slot offhand equipLocs (`INVTYPE_SHIELD`, `INVTYPE_HOLDABLE`, `INVTYPE_WEAPONOFFHAND`) keep their current behaviour - that's a separate playstyle judgment. **Test 62** locks the 2H-narrowing shape.
+- **Fix: stale `Keep (upgrade)` entries now auto-clean.** `EC_compCache.checkBagsForUpgrades` was one-way: it added entries when an item looked like an upgrade vs the player's then-current gear, but never re-evaluated. An item added during early levelling (e.g. an Ornamental Mace iLvl 17 added when the player had a sub-iLvl-17 starter weapon) stayed on the Keep List forever even after the player upgraded past it. Users had to remember the `/ec clean upgrades apply` slash command to clean stale entries. Fix: a re-evaluation pass at the top of `checkBagsForUpgrades` walks `DB.blacklistAuto` entries with `tag == "upgrade"`, recomputes the lowest populated equipped iLvl, and removes entries no longer above it. Trigger frequency: every `BAG_UPDATE`-debounced cycle (120 ms idle window, fires on looting, equipping, vendoring, moving items), so cleanup is hands-off in normal play. Tooltips still need a cursor-off-and-back to redraw with the updated verdict (standard WoW tooltip-doesn't-redraw-while-visible behaviour). **Test 63** locks four sub-invariants.
+- **Fix: "save spares for alts" copy restored in Protection Settings.** v2.33.0 removed the alts framing from the `Even when already known` note based on the mistaken belief that Project Ebonhold saves tome / recipe learn-state account-wide. Only `@affix@` items (Anvil-extracted affixes) save account-wide in PE; tomes and recipes are per-character like vanilla WoW. New note: "Useful for saving spares for alts (different characters know different tomes / recipes) or selling them at the auction house yourself." The corresponding internal `EnsureDB` comment was also corrected.
+- **No schema changes; no new SavedVariables fields.** File count still 23. Safe overwrite from v2.33.0.
+
+> **Note on the v2.33.0 release page:** the "Save spares for alts copy removed" bullet in that release's notes incorrectly stated PE saves tome / recipe learn-state account-wide. That was a wording error in the changelog itself; the corresponding code change is reverted in this patch.
+
+### v2.33.0
+
+UX refresh plus a handful of PE-aware behaviour fixes. Tooltip annotations, panel descriptions, checkbox labels, and chat messages were rewritten across the addon to lead with what happens, drop technical jargon, and stay readable for a new player. Six panels gained a contained backdrop frame around their scrollable list area so "where you look" reads as a proper text box rather than a transparent void. Two PE-specific cache-staleness bugs and one vanity-pet false positive in tome detection are also fixed.
+
+- **Tooltip annotation labels rewritten.** The `Protected - <reason>` / `Allowed - <destination>` / `Auto-Protected (<state>)` label families are replaced with plain `Keep (<reason>)` / `Will Sell (<reason>)` / `Won't Sell (<reason>)` / `Will Delete`. New-player friendly: the verb says what's about to happen, the parens say why. Example mappings: `Protected - Affix found` becomes `Keep (new affix)`, `Protected - Affix known` becomes `Keep (affix you have)`, `Protected - Chance on hit` becomes `Keep (chance-on-hit proc)`, `Protected - Tome (unlearned)` becomes `Keep (new Tome)`, `Allowed - Account Sell` becomes `Will Sell (your Account List)`, `Allowed - Choose List` becomes `Override on - add to a list to sell`, `Won't Sell - Currently Equipped` becomes `Won't Sell (equipped)`, `Will Sell - Junk` becomes `Will Sell (junk)`. Quality-rule labels also collapse: `Will Sell - Green iLvl 25 (cap 35)` becomes `Will Sell (Green, iLvl 25, cap 35)`. Tests 14, 16, 26, and 44 reworded against the new label scheme.
+- **Panel descriptions, checkbox labels, chat messages, and slash command help all simplified.** The text-simplification pass covers Main panel, Item Highlighting, Protection Settings, Merchant Settings, Scavenger Settings, all four list panels (Sell, Account Sell, Keep, Delete), Process Bags, and the bag context menu. Examples: `Auto-protect equipped gear` becomes `Keep gear you're wearing`; `Items matched by any rule below are added to your Keep List automatically and excluded from auto-sell.` becomes `Rules that keep specific items safe from selling. You can override any of them on a single item with Alt+Right-Click - Allow Sell.`. The README's tooltip-annotation bullet was updated to reflect the new label scheme; the welcome blurb was tightened to lead with "out of the box it sells your junk and old gear, keeps your upgrades, and never touches anything important."
+- **Backdrop chrome on six list panels.** Sell List, Account Sell List, Keep List, Delete List, Profiles, and Process Bags now wrap their scrollable list area in the same dark tooltip-style backdrop frame that the Import/Export panel introduced in v2.29.0. Visual containment so the list reads as a defined "where you look" surface; scrollbar sits inside the chrome border with consistent 6 px insets on three sides and 28 px on the right (matches the Import/Export numbers exactly).
+- **Process Bags restructured to match the list pattern.** The panel is no longer outer-scroll-wrapped; the list area gets its own dedicated `ScrollFrame` inside the new chrome. The scrollbar lives inside the chrome border like every other list panel rather than on the outer panel - reported in-game as the outer-scroll experience being awkward to use.
+- **Button vertical alignment on list panels.** The `Name` and `ID` sort buttons in the search row and the `Add Match` button in the match row shifted up 4 px so their top edges align with the input field next to them. Pre-fix they sat ~4 px below the input, looking unbalanced - the search/match inputs centre on the LABEL's vertical centre (which sits below the label's TOPLEFT Y), so the button anchors had to compensate.
+- **Fix: affix catalog refreshes immediately on hover after a learn-at-Anvil.** Pre-fix scenario: player learned a new affix at the Anvil, immediately hovered a fresh drop with that affix, EC said `Keep (new affix)` because the catalog refresh was tied to `BAG_UPDATE` / `PLAYER_REGEN_ENABLED` only and then went through the v2.30.0 async chunked rebuild (~600-800 ms staleness, longer if no qualifying event fired). Two changes restore freshness: `EC_compCache.refreshExtractionIfDirty` now does a **synchronous incremental merge** of new `ExtractionService.learnedAffixes` entries directly into the live `knownAffixDescriptions` map (driven by the `procIdToDescription` cache so per-call cost is O(1) per known affix in the warm case), and `EC_AnnotateTooltip` calls `refreshExtractionIfDirty` from inside the affix branch so the hover itself is the trigger - the first hover after a learn shows the correct verdict. The async full rebuild is preserved as a fallback for pre-`PLAYER_LOGIN` bootstrap and the rare un-learn case. **Test 59** locks both invariants.
+- **Fix: tome / recipe "Already known" state read from the live tooltip first, not the cache.** PE's Tome of Echo doesn't teach a Blizzard spell on use (PE updates internal state instead), so `LEARNED_SPELL_IN_TAB` / `SPELLS_CHANGED` don't fire and the `tomeIsKnownCache` was never invalidated. A cached `false` from a hover before the tome was used stuck around forever and EC kept labelling the tome `Keep (new Tome)` even when Blizzard's own red `Already known` line was visible right above. The cache-first fast-path is removed from `liveTooltipPlayerKnowsTome`; the live tooltip is the authoritative source on every hover and the cache is now a side-effect output (still useful to the bag-scan variant `playerKnowsTomeSpell` which has no live tooltip, so the merchant cycle inherits the corrected verdict). **Test 60** locks the read-order invariant.
+- **Fix: vanity pets and mount-training scrolls no longer caught as tomes.** Items whose Use line reads "Teaches you how to summon this companion" (e.g. Disgusting Oozeling) or "Teaches you how to ride" (mount scrolls) were matching the `Use: Teaches` text-scan fallback in `itemIsTome` / `liveTooltipIsTome` and getting labelled `Keep (new Tome)`. Two-layer defence: GetItemInfo class+subclass exclusion (`class="Miscellaneous"` + `subclass="Companion"` or `"Mount"`), plus a tooltip-text reject inside the scan that catches `this companion` / `this mount` / `how to ride` phrasings (covers the 3.3.5a-era pets that file under `subclass="Junk"` rather than `"Companion"`). **Test 61** locks both layers.
+- **Fix: "save spares for alts" copy removed from Protection Settings.** Project Ebonhold saves tome / recipe / affix learn-state account-wide, so the old `Even when already known` note suggesting players might want spares for alts was factually wrong - the alt already has the spell. New copy: `Useful if you'd rather sell duplicates at the auction house yourself instead of vendoring them.` The internal code comment was also corrected to reflect that PE shares learn-state across alts but the per-character protection flag still lets the user pick different behaviour per alt.
+- **Internal: CLAUDE.md gains two new rules** that future contributors / agents must follow. (1) Player-facing text stays brief, concise, new-player friendly: tooltip labels, panel descriptions, checkbox text, chat messages, and slash command help must lead with what happens, drop the "why" / mechanism, and avoid code jargon (no `predicate`, `sweep`, `veto`, `throughput`, `case-fold`, `qualifying event`, `auto-rule`). (2) Em dashes (Unicode U+2014) are banned anywhere in the repo - code, comments, docs, commit messages, CHANGELOG entries. A grep for U+2014 against the repo MUST return zero matches; the rule itself uses the Unicode codepoint to identify the character without ever inserting it.
+- **No schema changes; no new SavedVariables fields.** File count still 23. Safe overwrite from v2.32.x.
+
+### v2.32.2
+
+Patch release. Five behaviour fixes across two themes: **host bag UI compatibility** (the first three, all reported by users whose bag module differs from the default Blizzard container frames) and **catalog-freshness on PE roguelite paths** (the last two, where PE-internal state changes don't fire the Blizzard spell events EC was using as cache-invalidation triggers).
+
+- **Fix: Alt+Right-Click context menu now sits in front of host bag frames.** The menu was being created at `DIALOG` frame strata, the same strata UI-replacement frameworks commonly use for their bag frames - and those frames often run at a much higher internal frame level than the EC popup, so the menu lost the layering contest and rendered behind. Promoted to `FULLSCREEN_DIALOG` strata + per-show `frame:Raise()` (same convention the colour picker fix already uses, see `EbonClearance_ItemHighlightingPanel.lua`).
+- **New surface: Item Highlighting now works in UI-replacement framework bag UIs.** The v2.29 → v2.31 sell-border-tint feature had two adapter surfaces: the default Blizzard container frames (via `ContainerFrame_Update`) and a legacy AceAddon-3.0-registered host bag UI (via `LibStub("AceAddon-3.0"):GetAddon(<name>)`). A third surface is now recognised: UI-replacement frameworks that expose their engine table via the standard `_G[<AddOnName>]` + unpack pattern (`local E, L, V, P, G = unpack(_G[<AddOnName>])`). The adapter resolves the framework's `Bags` module via `Engine:GetModule("Bags")`, hooks `B.UpdateSlot(self, frame, bagID, slotID)` with `hooksecurefunc`, and applies the existing sell-border texture to the slot button at `frame.Bags[bagID][slotID]`. A belt-and-braces direct-paint loop walks the framework's predictably-named slot frames (`<bagFrameName>Bag<bagID>Slot<slotID>`) immediately after install so the first paint doesn't depend on a subsequent host-driven update firing. Each adapter has its own install-once flag (`_hostBagBorderHookInstalled` for the legacy surface, `_engineBagBorderHookInstalled` for the new one) so neither blocks the other.
+- **Fix: sell-border ring scales proportionally to slot width.** The ring texture (`UI-ActionButton-Border`, 67×67) was hard-coded to the default Blizzard container slot's 37 px width. On host bag UIs whose slot buttons are smaller (~30 px is common), the 67 px texture extends ~3.5 px further out than the slot edge, leaving the visible glow ring floating in dead space between slots instead of hugging the slot edge - visually loose. The texture now sizes to `floor(slot_width × 67 / 37)` per `applySellBorder` call: default UI's 37 px slot → 67 (unchanged), 30 px host slot → 54 (tight ring at the slot edge). Per-call (not per-create) so dynamic slot resizing by the host adapter still tracks.
+- **Fix: affix catalog now refreshes on hover after a learn-at-Anvil, no `/reload` and no wait for `BAG_UPDATE`.** Pre-fix scenario: a player learned a new affix at the Enchanted Anvil and immediately hovered an item with that affix; EC labelled it `Protected - Affix found` (unknown) because the catalog refresh was tied to `BAG_UPDATE` and `PLAYER_REGEN_ENABLED` only, then went through the v2.30.0 async chunked spellbook rebuild - typically ~600-800 ms of staleness, longer if no qualifying event fired at all. Two changes restore freshness: (1) `EC_compCache.refreshExtractionIfDirty` now does a **synchronous incremental merge** of new `ExtractionService.learnedAffixes` entries directly into the live `knownAffixDescriptions` map (driven by the `procIdToDescription` per-spellID cache so per-call cost is O(1) per known affix in the warm case), and (2) `EC_AnnotateTooltip` calls `refreshExtractionIfDirty` from inside the affix branch so the hover itself is the trigger - the first hover after a learn shows the correct verdict. The async full rebuild is preserved as a fallback for pre-`PLAYER_LOGIN` bootstrap and the (rare) un-learn case where `learnedCount` goes down. **Test 59** locks both invariants.
+- **Fix: tome / recipe "Already known" state read from the live tooltip first, not the cache.** Pre-fix scenario: a PE "Tome of Echo" used once doesn't teach a Blizzard spell (PE updates internal state instead), so `LEARNED_SPELL_IN_TAB` / `SPELLS_CHANGED` don't fire and EC's `tomeIsKnownCache` was never wiped. A cached `false` from a hover **before** the tome was used stayed in place forever, so EC kept labelling the tome `Protected - Tome (unlearned)` even when Blizzard's own red `Already known` line was visible right above. The cache-first fast-path is now removed from `EC_compCache.liveTooltipPlayerKnowsTome`; the live tooltip is the authoritative source on every hover, and the cache is written as a side-effect (still useful to the bag-scan variant `playerKnowsTomeSpell` which has no live tooltip, so the merchant cycle inherits the corrected verdict). **Test 60** locks the read-order invariant (`tooltip:GetName()` must appear before any cache-hit early-return).
+
+No schema changes; no new SavedVariables fields. File count still 23. Safe overwrite from v2.32.x.
+
+### v2.32.1
+
+- **Fix: delete-path affix gate now honours manual Allow Sell.** Before this patch, an affixed Rare/Epic item with `sellPrice = 0` (e.g. soulbound, no vendor value) that the user had explicitly Alt+Right-Click → **`Allow Sell`**'d could not be removed via the Delete List - the sell path couldn't act (no vendor value) and the delete path silently vetoed on the affix gate. The reporting user's Whiteout Staff (Rare, ilvl 65, sellPrice 0, soulbound, affixed) stayed stuck in bags with no escape. Root cause: `BuildQueue`'s delete-path affix gate was checking only the auto-dupe sub-gate (`affixProtected = not isDupe`); it didn't consult `ADB.allowedAffixes`. The sell path's `not (manualAllow or autoDupe)` shape is now mirrored on the delete path; the affix description is normalised via `EC_compCache.normaliseAffixDesc` so case-folding matches storage. **Test 58** locks the new gate shape (references `ADB.allowedAffixes` + uses the unified pattern); a future refactor that drops the `manualAllow` branch from the delete path will fail this test before merge.
+- **Fix: `/ec sellinfo` affix-protection trace message accuracy.** The `affixProtection` trace step used to print a single catch-all `n/a (quality below Rare or protection off)` message whenever the sell-side gate didn't fire - misleading when affix protection was actually ON but the gate skipped because no positive sell signal existed. The message now splits into three accurate variants and explicitly notes that the delete-list path is checked separately, so a user reading the trace doesn't conclude "affix protection isn't applying here" when the actual answer is "the sell-side gate doesn't fire on items that weren't going to sell anyway, but the delete-side gate is what's keeping this stuck."
+- **New (small): opt-in itemID line on bag/item tooltips.** New checkbox **`Show item ID in tooltip`** in the **Item Highlighting** panel (new Tooltip section, below the per-category colour pickers). Default OFF. When on, bag-item and Shift-clicked item-link tooltips gain a grey `Item ID: NNNN` line under the EC status line. Re-uses the itemID already parsed from the `|Hitem:NNNN|` link so there's no extra hook or parse cost when the toggle is off. Toggling the box clears the tooltip dedupe flag and hides any currently-visible tooltip so the change is visible on the next hover (no `/reload` needed); a small hint label under the checkbox surfaces this behaviour. Useful when filing `/ec bugreport`s or authoring Keep / Sell / Delete list entries by ID.
+- **Internal: release notes now live in `CHANGELOG.md`.** The README was trimmed to user-level content; per-release detail moved to `CHANGELOG.md` (this file). `NOTICE.md` picked up a reciprocal-credit acknowledgement reflecting that the broader 3.3.5a addon scene has both directions of cross-pollination visible in source comments. The GitHub release body for `v*` tags now auto-extracts the matching `### vX.Y.Z` stanza from `CHANGELOG.md` via the release workflow, so release pages show the curated changelog first followed by the auto-generated compare-link footer.
+- **Internal: Fast Loot AntiDoS throttle locked.** **Test 57** locks six invariants on the Fast Loot path: the `lootQueue.delay >= 0.10` throttle floor, the `(GetTime - lastLootAt) < delay` gate in the OnUpdate body, exactly one `LootSlot()` call site in shipped source, no tight `for ... do ... LootSlot()` loop, `LOOT_READY` registered as the Fast Loot event source, and `LOOT_OPENED` NOT registered as a separate handler. Defends the throttle design against future "let's make it faster" pressure on a private-server addon where flood disconnects are a real concern.
+- **Schema:** one new field on `EbonClearanceDB`: `showItemIDOnTooltip` (boolean, default `false`). Additive / idempotent. No removals. No migrations.
+- **File count unchanged:** still 23 source `.lua` files. Safe to overwrite over an existing v2.32.0 install - no "delete the EbonClearance folder first" warning required for this patch.
+
+### v2.32.0
+
+- **New: tome and recipe protection.** Spell-teaching items (profession recipes - Plans / Schematic / Pattern / Formula / Recipe / Design / Manual - plus class tomes, mount scrolls, and Project Ebonhold "Tome of Echo" books) are now auto-protected from vendoring. Two toggles in **Protection Settings** wired as parent + child (mirrors the existing affix-dupe pair):
+  - **`Protect tomes and recipes`** (default ON) - protects items teaching a spell the character does not yet know. The unlearned check uses the locale-aware `Already known` tooltip line so the protection releases the moment the player learns the spell, no `/reload` needed.
+  - **`Even when already known`** (default OFF, child of the parent toggle) - extends the protection to items the character has already learned. Disabled (greyed) when the parent is off.
+  
+  **Two-key gate by design.** Protected items HARD-veto in `EC_IsSellable`: a tome cannot be vendored even when explicitly on the Sell List. The user must Alt+Right-Click → **`Allow Sell`** first to lift the protection. Mirrors the v2.19.0 affix-protection semantics, not the v2.20.1 chance-on-hit narrowing. Once Allow Sell is set, the full Alt+Right-Click menu opens (Add to Sell / Account Sell / Delete / Keep) and the item flows through whichever list applies. **`Remove from Allow List`** cascades a clear through Character Sell + Account Sell (matches the v2.31.0 cascade for chance-on-hit + affix).
+  
+  Tooltip annotation surfaces the protection reason: `Protected - Recipe (unlearned)` / `Protected - Tome (known)` etc. The label distinguishes profession recipes from generic spell tomes based on `GetItemInfo` subtype - profession subtype (Alchemy / Blacksmithing / Cooking / etc.) shows "Recipe"; everything else (Book, PE-custom) shows "Tome". `GetItemInfo`'s class string is "Recipe" for both groups, so the subtype is the distinguishing field.
+- **Change: hide Greedy Scavenger chat + bubbles is now baked in.** The `Hide chat messages` and `Hide chat bubbles` checkboxes were removed from **Scavenger Settings**. Both behaviours are now always on; `DB.hideGreedyChat` and `DB.hideGreedyBubbles` are forced to `true` on every load. The `/ec bugreport` `Hide Chat` / `Hide Bubbles` lines were also removed (redundant - always true). The `Mute Greedy` field stays in DB for backward compatibility but no longer has a UI checkbox.
+- **Fix: chance-on-hit tooltip honesty for explicit Sell List entries.** Pre-existing v2.20.1 narrowing said "explicit user lists override the safety net" - but the tooltip annotation never picked that up and kept reading `Protected - Chance on hit` even when the item was on the Sell List (so the slot border was green but the tooltip said protected). The annotation now respects explicit Sell List / Account Sell List / Delete List membership and leaves the earlier `Will Sell` / `Will Delete` verdict in place. Same fix shape would NOT apply to tome protection because of the new hard-veto semantic - Protected wins there regardless of list membership.
+- **Fix: defensive nil-guards on the ADDON_LOADED bootstrap chain.** During in-game iteration across the multi-file split, a partial file sync would nil-call one of the `NS.*` hook installers (`NS.InstallTooltipHookOnce`, `NS.CreateMinimapButton`, etc.) and kill the entire init chain at the first nil call site. The chain now follows the existing `if NS.ApplyGreedyChatFilter then ... end` pattern - a missing file degrades gracefully (that subsystem just doesn't initialise) and the rest of the addon still loads. Net positive for end-users too if a corrupt extraction ever leaves a file missing.
+- **Internal: file-split refactor complete (Stages 8e-ix-b / 8e-ix-c / 8e-ix-d / 9).** Four final extraction stages closed out the multi-release refactor that began in v2.30.0:
+  - **Stage 8e-ix-b** added `EbonClearance_PanelInfra.lua` - the panel-width registry + reactivity layer (`EC_PANEL_WIDTH`, `widthRegistry`, `setPanelWidth`, `refreshLayouts`, `EC_HookScrollbarAutoHide`, `EC_WrapPanelInScrollFrame`, `EC_FitScrollContent`, `initPanel`).
+  - **Stage 8e-ix-c** added `EbonClearance_PanelWidgets.lua` - six widget primitives (`MakeHeader`, `MakeLabel`, `AddCheckbox`, `AddSlider`, `StyleInputBox`, `ColorTextByQuality`).
+  - **Stage 8e-ix-d** added `EbonClearance_ListWidget.lua` - the densest remaining cluster: five row-factory helpers on `EC_compCache` (`makeListRowFactory`, `buildListHeaderRow`, `buildListSearchAndSortRow`, `buildListMatchRow`, `buildListScrollArea`) + the assembled `CreateListUI` widget + the shared `EC_AddScanByQualityRow` scan-row helper.
+  - **Stage 9** renamed `EbonClearance.lua` → `EbonClearance_Events.lua` so the file's name matches what it actually contains now (event hub + slash commands + Bindings.xml glue). The release workflow's filename-anchored `sed` rules + every test SOURCE_PATHS array + `.luacheckrc` / `stylua.toml` / `CLAUDE.md` were all updated in lockstep.
+  
+  The single-file `EbonClearance.lua` shrank from ~11,800 LOC (v2.29.0) → ~5,299 LOC (v2.32.0), now living as `EbonClearance_Events.lua`. **Tests 52-55** lock the new structure: no row factories / CreateListUI / widget primitives / panel-width registry redefined in the event hub, ADDON_VERSION lives in the renamed file, .toc and release.yml reference the new name. **23 source files now ship in the release zip.** **If you install over an existing EbonClearance install, please delete the EbonClearance folder before extracting v2.32.0** - v2.31.0 shipped 20 source files including `EbonClearance.lua`; v2.32.0 ships 23 source files with `EbonClearance.lua` renamed to `EbonClearance_Events.lua`. An overwrite without delete leaves the old monolith file orphaned and WoW will try to load it (it's not in the new .toc but the file would still exist on disk). A clean install is the only safe path here.
+- **Schema:** two new fields on `EbonClearanceDB`: `protectUnlearnedTomes` (boolean, default `true`) and `protectAllTomes` (boolean, default `false`). `DB.hideGreedyChat` and `DB.hideGreedyBubbles` are now force-set to `true` on every load (the UI checkboxes were removed; the fields stay in DB for the Companion.lua consumer code). All additive / idempotent.
+
+### v2.31.0
+
+- **New: per-category bag-slot border tints (5 colours).** The single `sellBorderColor` from v2.29.0 was replaced with a per-category palette. Each of the five verdict categories - Delete List, Account Sell List, Character Sell List, Junk (grey items), and Per-rarity rule match - now has its own enable checkbox and colour picker. Priority order matches the tooltip annotation: a Delete-listed item wins over a list match, a list match wins over Junk, Junk wins over Rule. Default colours: red (Delete), bright green (Account Sell), cyan (Character Sell), low-alpha grey (Junk), gold (Rule - matches the v2.29 single-colour default). Toggle individual categories off to hide that tint without turning the whole feature off; toggle them all on to see WHY each slot would clear at a glance. The icon canvas remains untouched (slot-frame ring only, never an icon overlay).
+- **New: Character Settings panel renamed to `Item Highlighting`.** With the per-category colour pickers, the panel is now purely about bag-item highlighting. The legacy "Enable only for listed characters" allowlist feature has been removed - the minimap toggle (and `/ec` slash command) already cover the per-character disable use case, and the dedicated allowlist UI added little value. `DB.enableOnlyListedChars` is force-disabled on every load so existing users with the filter previously enabled don't end up locked out of the addon on characters that weren't in their old `allowedChars` set; `DB.allowedChars` itself stays dormant in the SV for downgrade safety.
+- **New: Interface Options sidebar reordered by user discovery flow.** The previous alphabetical order scattered related panels and dropped the most-used surfaces to the bottom. New order: **Merchant Settings → Protection Settings → Scavenger Settings → Item Highlighting** (the behaviour panels that drive what the addon does), then **Sell List → Account Sell List → Keep List → Delete List** (the list-management family with sibling pairs adjacent), then **Process Bags → Profiles → Import/Export** (specialised workflows + meta-management). The visible sidebar order is the registration order; comments on the registration block document the grouping rationale so a future refactor doesn't silently revert.
+- **New: affix tooltip honesty pass.** Replaces the v2.23.0 / v2.27.0 affix-protection labels with a three-state scheme that surfaces whether the player has already extracted the affix at this rank, independent of the `affixAllowExactDupes` setting:
+  - `Protected - Affix found` - affix unknown to player (was: `Protected - Random affix`).
+  - `Protected - Affix known` (new) - affix known at this rank, but dupe-allow is off. Distinct label so the user can decide whether to sell manually.
+  - `Allowed - <name> known` - affix known + dupe-allow on (was: `Allowed - <name> rank N already known`). Drops the `already` and the `rank N` for brevity.
+  
+  List-destination labels still win when the item is also on a list (Sell / Account Sell / Delete) - that behaviour is unchanged from v2.27.0.
+- **New: chance-on-hit + affix tooltip rewrites the prefix when a per-rarity rule fires.** When `Allow Sell` is on for a protected item and no list claims it, but a per-rarity sweep rule WOULD match it, the tooltip now reads `Allowed - <rule reason>` (e.g. `Allowed - Blue iLvl 46 (cap 100)`) instead of the misleading `Allowed - Choose List`. The legacy `Choose List` label still fires when no rule matches - it's the call-to-action for "pick a destination".
+- **New: `Remove from Allow List` cascade.** Clicking `Remove from Allow List` on an Alt+Right-Click bag context menu also clears the item from Character Sell + Account Sell lists. Restores the v2.20.1 "explicit user intent overrides safety net" invariant when the user reverses the proc-allow workflow: they wanted to dump the proc base; they changed their mind; now their Sell List doesn't carry an orphan entry. Keep List and Delete List are NOT cascaded - those are different intents.
+- **Fix: settings-toggle slot-border refresh.** Toggling `Allow exact-rank duplicates`, `Protect affixed Rare items`, `Protect chance-on-hit items`, `Enable item deletion`, or any per-rarity rule field (enabled / iLvl cap / bind filter / `Use equipped iLvl`) now repaints slot tints immediately. Pre-v2.31 the SV wrote correctly but the border-tint registry wasn't refreshed, so users had to close and re-open their bags to see the new verdict reflected. Same root rule as the v2.29 list-mutation refresh invariant (Test 26); 8 OnClick sites fixed in this pass + Test 42 added to lock all 8 against future regression.
+- **Fix: profile-load slot-border refresh.** `EC_LoadProfile` rewrites `DB.whitelist` + `DB.blacklist` wholesale, changing the verdict for every item that was previously / newly on those lists. The function refreshed list-UI panels but didn't repaint slot tints. Fixed; Test 42 extended.
+- **Fix: cold-load border paint after `/reload`.** The host bag UI adapter (Bagnon's `ItemSlot:Update` hook) was installing at `PLAYER_LOGIN + 2 s`. Bags opened in that 2-second window painted without the hook attached and the first border only appeared after the next host-driven slot refresh (typically a bag close / reopen). Fixed: hook installs immediately at `PLAYER_LOGIN` (the common case - host already loaded by then) AND the 2 s fallback stays as a backstop for hosts that load lazily. Both calls are idempotent. On a successful install, any already-visible host frames also get force-repainted so the tints show immediately even if bags were already open at install time.
+- **Fix: rule-category tint follows the item on bag-slot move.** Moving a gold-tinted item from one bag slot to another would leave the new slot tint-less until something else triggered Bagnon to repaint. Root cause: the host hook fires immediately during the move while the slot is still `locked = true`, and `NS.IsSellable` bails on locked items, so the category resolver returned nil and the tint hid. For list-based categories Bagnon's follow-up `UpdateBorder` (search-fade path) caught things up; for rule-category items it didn't. Fix: `NS.RefreshSellBorders()` now runs at the end of the 120 ms-debounced `BAG_UPDATE` work block, so every tracked button gets a final paint after the bag burst settles and the lock has cleared.
+- **Tooltip annotations enumeration updated** in the feature list above this changelog: `Protected - Random affix` removed; `Protected - Affix found` / `Protected - Affix known` / `Allowed - <affix name> known` added.
+- **Internal: file-split refactor continued (Stages 8 → 8e-ix-a).** Added 13 more split files since v2.30.0 - `EbonClearance_BugReport.lua`, `EbonClearance_Minimap.lua`, `EbonClearance_Tooltip.lua`, `EbonClearance_BagContextMenu.lua`, `EbonClearance_ProcessBagsPanel.lua`, `EbonClearance_MerchantPanel.lua`, `EbonClearance_ScavengerPanel.lua`, `EbonClearance_SellListPanels.lua`, `EbonClearance_KeepDeletePanels.lua`, `EbonClearance_ProtectionPanel.lua`, `EbonClearance_ItemHighlightingPanel.lua`, `EbonClearance_ProfilesPanel.lua`, `EbonClearance_MainPanel.lua`. The single-file `EbonClearance.lua` is now 6,312 LOC (was 11,800 pre-split, 9,565 at v2.30.0). 11 new invariant tests (Tests 40-51) lock the split structure: every panel frame must live in its extracted file (not duplicated in the main file), every cross-file helper must be NS-exposed and called by NS-qualified name, every panel registration must use the `_G[panel-name]` lookup, and every panel that touches DB / ADB must capture them at function entry. Pure mechanical refactor on the user-facing surface; remaining stages (the panel-infra cluster + the final `EbonClearance.lua` → `EbonClearance_Events.lua` rename) are deferred to v2.32.0. **If you install over an existing EbonClearance install, please delete the EbonClearance folder before extracting v2.31.0** - v2.30.0 shipped 7 source files; v2.31.0 ships 20. An overwrite without delete is technically safe (no name collisions) but a clean install is the safest path.
+- **Schema:** new field on `EbonClearanceDB`: `sellBorderCategories` (table keyed by category name, each entry `{enabled = boolean, color = {r,g,b,a}}`). Replaces the v2.29.0 `sellBorderColor` field, which stays in the SV (ignored by the new paint path) for downgrade safety. `DB.enableOnlyListedChars` is force-disabled on every load (decommissioned); `DB.allowedChars` left dormant. All additive / idempotent.
+
+### v2.30.0
+
+- **Fix: 30-second freeze on login / soul ash tree apply.** Community contributor [@Sanavesa](https://github.com/Sanavesa) reported (PR #2) that EC's affix-catalog rebuild (`refreshKnownAffixes`) ran synchronously on every `LEARNED_SPELL_IN_TAB` / `SPELLS_CHANGED` event. Login fires `SPELLS_CHANGED` multiple times during initial spellbook population, and the soul ash tree teaches 20+ affixes in rapid succession; each fire walked the entire spellbook with tooltip scans. Result: ~30 s game freezes. Three-mechanism fix: (1) a 0.5 s **debounce frame** coalesces rapid spell events into a single rebuild; (2) a **per-spellID cache** (`spellbookAffixCache`) makes each spell's tooltip scan a once-per-session cost; (3) a **chunked OnUpdate scan** processes 30 tooltip scans per frame so even the first cold-cache rebuild never freezes the UI. Newly-extracted affixes still propagate without `/reload` (the v2.26.0 invariant). Thanks Sanavesa!
+- **Fix: basic profession tools no longer auto-sold.** Community contributor `Monrad` reported that the basic Fishing Pole, Mining Pick, and Arclight Spanner were getting auto-sold by a White-rule sweep. EC now ships a baseline-protected itemID set covering standard WotLK 3.3.5a profession tools: 11 fishing poles, 4 mining picks, the Arclight Spanner, the Skinning Knife, and the Blacksmith Hammer. Same narrowing pattern as the v2.13.x quest-item safety net - only auto-rule sweeps are vetoed; explicit Sell List entries still override, and the Allow Sell per-item override (Alt+Right-Click) bypasses the safety net if you actually do want to vendor a duplicate. Tooltip annotation shows `Protected - Profession tool` when the safety net fires; `/ec sellinfo` includes a new `professionToolSafetyNet` trace step. Project Ebonhold custom tools (if any) need manual Keep List entries - only standard WotLK IDs are in the default set. Thanks Monrad!
+- **Internal: file-split refactor (Stages 1-7).** The single-file addon was approaching Lua 5.1's 200-locals cap and grew past the documented 8K-LOC split threshold (was ~11,800 LOC). The codebase is now split into 7 files (`EbonClearance_Core.lua`, `EbonClearance_Companion.lua`, `EbonClearance_Protection.lua`, `EbonClearance_Vendor.lua`, `EbonClearance_Process.lua`, `EbonClearance_BagDisplay.lua`, plus the now-smaller `EbonClearance.lua`) loaded via the .toc. Pure mechanical refactor - no user-visible behaviour change. The split is internally tracked in `docs/CODE_REVIEW.md` item 4; remaining stages (UI extraction + the final rename) are deferred to future releases. **If you install over an existing EbonClearance install, please delete the EbonClearance folder before extracting v2.30.0** - the old single-file install has only `EbonClearance.lua` whereas v2.30.0 ships 7 source files; an overwrite (without delete first) is technically safe (no name collisions) but a clean install is the safest path.
+
+### v2.29.0
+
+- **New: bag-slot sell-border tint.** Optional coloured ring around bag slot frames whose items the current rule chain would sell at the next vendor visit. Off by default; enable in Character Settings and pick your own colour through the standard colour-picker dialog. The ring lives on the slot frame, never on the icon itself, so the icon canvas stays untouched. Repaints instantly when toggled, when the colour changes, when items are added or removed from any list, when the Allow Sell override is toggled, and when a settings pack import changes verdicts.
+- **New: `/ec sellinfo` predicate-trace inspector.** `/ec sellinfo [bag slot]` (defaults to the first non-empty bag slot) walks the same decision chain that drives the merchant cycle and prints a per-step trace (`+` / `-` markers) explaining which predicates passed and which failed for that slot. Alt+Shift+Right-Click a bag item for the same trace. Closes the diagnostic loop on "why isn't this selling?" questions without needing a `/ec bugreport` cycle.
+- **New: full settings pack export / import.** The Import / Export panel gains a `Full settings pack` checkbox. When ticked, Export produces one fingerprint-suffixed string covering quality rules + Sell List + Account Sell List + Keep List + Delete List. Import auto-detects the format (`EC_PACK_V1` marker) and routes appropriately; the existing single-list export workflow is unchanged when the checkbox is off. Merge / Replace modes apply per list within the pack.
+- **Combat-deferred settings open.** Minimap left/middle click during combat now queues the panel open and fires it the moment combat ends, with a one-line chat note so the silent block isn't mistaken for a broken button. Right-click (toggle enabled) is unaffected.
+- **Affix dupe gate fix: case-fold normalisation.** Rank-I affix descriptions that shipped with a lowercase opening letter would miss the match against rank-II / rank-III entries that use a capital. The normaliser now case-folds at the end so both ends of the comparison agree regardless of source-side casing. One-shot migration on the account-wide allow list (`ADB.allowedAffixes`) lowercases existing keys so previously-allowed affixes keep matching after the change.
+- **List mutations and Allow Sell mutations now refresh the slot-border tints immediately.** Previously the ring would persist after Alt+Right-Click → "Remove from Sell List" or after toggling Allow Sell, until the bag was closed and reopened. Now every list / allow-list write is followed by a repaint of every decorated slot button.
+- **Deep-bag tracking fix.** The slot-border registry tracks every button the hook has ever touched, not just buttons that previously had a ring drawn. Without this, items deep in bags whose first paint was `won't sell` couldn't be found by the refresh helper when their verdict later flipped; moving the item to a new slot would "unlock" them by routing through a fresh `:Update`. The new tracking puts every button in the registry on the first paint, fixing the case.
+- **`/ec bugreport` neutral capability flags.** The old `UI Mods Detected` block listed specific third-party addons; replaced with an `Environment Capabilities` block reporting generic flags (`host bag UI detected`, `host bag-UI category API available`, `LibItemSearch present`, `auction pricing source detected`, `Project Ebonhold extraction catalog exposed`). New `Bag Display` block surfaces the sell-border state, colour, decorated-button count, and host-hook installation flag. New `Allow Lists` block surfaces the chance-on-hit / random-affix allow-list counts, the known-affix session set size, and the exact-rank-duplicates toggle.
+- **Merchant Settings narrow-width fix.** At narrow Interface Options panel widths the per-rarity row labels (`White (Common)`, `Green (Uncommon)`, etc.) overflowed into the right-anchored `Use equipped iLvl` + `max iLvl` controls. The label now anchors against the `Use equipped iLvl` text's left edge instead of using a fixed 420 px width, so the rarity name truncates cleanly when the panel narrows.
+- **Import / Export panel: backdrop chrome on the output / input boxes.** Both EditBox scrolls now sit in a dark tooltip-style backdrop frame with a thin beveled border, so they're visually distinct as text areas instead of rendering as a transparent void. Clicking anywhere in the box focuses the EditBox (previously you had to click on the glyph row inside).
+- **`/ec sellinfo` listed on the main settings panel's Slash Commands block.** Was previously only in `/ec help` chat output.
+- **Schema:** two new fields on `EbonClearanceDB`. `sellBorderEnabled` (boolean, default false) and `sellBorderColor` (table `{r,g,b,a}`, default gold). Additive; no existing field changes. One-shot migration on `ADB.allowedAffixes` keys (case-fold) is also additive and idempotent.
+
+### v2.28.0
+
+- **Sell / Keep / Delete List panels load fast at 1000+ items.** The hot path (`CreateListUI.Refresh()`) was doing thousands of redundant `GetItemInfo` calls and re-running the full refresh on every search keystroke. Now:
+  - **Search input debounced** 250 ms. Typing a multi-character query triggers one refresh after you stop typing, not one per keystroke.
+  - **Name-sort pre-computes the names** before sorting. A 1000-item name-sort dropped from ~20,000 `GetItemInfo` calls inside the comparator to ~1,000 one-pass lookups.
+  - **`SetOwner` hoisted** out of the uncached-item prime loop. Set once per refresh instead of once per uncached row.
+  - **`(affix-gated)` tag lookup** hoisted out of the per-row loop. Three table dereferences per row collapsed to one.
+- **Dead `EC_SellNowAt` removed.** Was orphaned by v2.27.0 dropping the `Sell Now` context-menu row. 19 LOC, zero call sites.
+- **No schema, no UI, no behaviour change.** Pure perf refactor. Same lists, same protections, same workflow.
+
+### v2.27.0
+
+- **Allow Sell now covers random-affix items.** The v2.26.0 chance-on-hit Allow Sell workflow extends to v2.23.0 random-affix protected items. Hovering an affixed Rare/Epic always shows the protection state (`Protected - Random affix`); Alt+Right-Click on a protected item shows only `Allow Sell` and `Cancel` until you acknowledge it. Same gate, same call-to-action.
+- **Affix marks are per-affix, not per-itemID.** Marking Orb of Mistmantle (Inner Light II) writes the affix description (`Increases your total Spirit by 6%`) to a new account-wide list. Future drops rolling the same affix on any base item are released; drops of the same base item rolling a different affix stay protected.
+- **Chance-on-hit marks are still per-itemID.** Vanilla procs are bound to the item identity, so marking Bloodpike records itemID 13057; same logic as v2.26.x.
+- **Detector now catches `Equip: Chance to <verb>...` procs.** Older Quillshooter-style PPM procs are now protected (and overridable) the same way as `Chance on hit:` items.
+- **`(affix-gated)` tag in the Sell List panel.** Affix-sourced Sell List entries show a grey `(affix-gated)` suffix so the panel is honest: the per-itemID entry doesn't blanket-sell every drop, the affix protection still filters per-drop. Pre-v2.27 entries get the tag retroactively the next time you hover the item.
+- **Tooltip destination labels win over the v2.23.0 auto-dupe info.** When an item is on a list AND auto-allowed by `affixAllowExactDupes`, the tooltip shows the destination (`Allowed - Account Sell`, etc.) instead of the `rank N already known` informational label. The informational label still shows for auto-allowed items that aren't on any list.
+- **`Sell Now` removed from the Alt+Right-Click menu.** Explicit sells go through the Sell List rows; the one-shot vendor command was redundant.
+- **`Add to` prefix dropped from list row labels.** `Sell List (Character)`, `Keep List (Do Not Sell)`, etc. The orange `Remove from X` rows still provide the contrast.
+- **Perf cleanup from a code review of v2.22.0-v2.26.1.** `processTooltipHasLine` writes a negative-cache sentinel so non-millable / non-prospectable items don't rescan every BAG_UPDATE rearm. `buildProcessSummary` pre-computes item names before sorting so the comparator is O(1) per compare. Dead `local short` in `rearmProcessButton` removed (would have failed luacheck zero-warning threshold). Dead `EC_compCache.findNextProcessable` (zero call sites) removed.
+- **Schema:** three new fields, all on `EbonClearanceAccountDB`. `allowedItems` (itemID-keyed), `allowedAffixes` (affix-description-keyed), `affixedListedItems` (side meta for the `(affix-gated)` tag). One-shot migration carries v2.26.x `allowedProcs` into the new `allowedItems` field. Additive; no existing field changes.
+
+### v2.26.0
+
+- **New: "Allow Sell" override for chance-on-hit items.** Right-click any bag item with a `Chance on hit:` proc and pick `Allow Sell`. That itemID drops out of v2.20.0's chance-on-hit safety net account-wide; future drops on any character auto-sell via your normal quality rules and become eligible for Process Bags. To undo, right-click again and pick `Remove from Allowed Procs`.
+- **Protected-state menu is intentionally narrow.** While a chance-on-hit item is unmarked, the Alt+Right-Click menu hides the Sell List / Keep List / Delete List rows so you can't accidentally add a still-protected item to a sell rule. Once you've picked Allow Sell, the full menu opens up.
+- **Tooltip annotation states.** `Protected - Chance on hit` (unmarked) or `Allowed - Proc` (marked). Always surfaced when the item has a chance-on-hit line, even on Epic-rarity items the quality-rule sweep wouldn't touch.
+- **Account-wide list.** PE's extraction state is itself account-wide on Project Ebonhold, and whether a vanilla proc is worth keeping is a per-item decision regardless of which alt is holding it. The list lives in `EbonClearanceAccountDB.allowedProcs`.
+- **ExtractionService merged into the known-affix refresh.** `refreshKnownAffixes` now also reads `_G.ExtractionService.learnedAffixes` (the catalog PE's Anvil uses) alongside the v2.23.0 spellbook walk, so the v2.23.0 affix dupe gate sees newly-extracted affixes without `/reload`. Cheap dirty-check (`refreshExtractionIfDirty`) wired into the 120 ms BAG_UPDATE debounce frame and `PLAYER_REGEN_ENABLED`.
+- **Why manual, not automatic.** Vanilla chance-on-hit items (Bloodpike, Dark Iron Sunderer, etc.) carry built-in procs with no client-side bridge to PE's ExtractionService catalog. PE's own Anvil only knows about them via a server roundtrip. A manual mark-once-per-itemID workflow gives the user the decision and keeps the addon honest about what it knows and doesn't.
+- **List row labels lost the "Add to" prefix.** Plain `Sell List (Character)`, `Keep List (Do Not Sell)`, etc. for the add rows; `Remove from X` stays for the remove rows so the contrast is still clear.
+- **Schema:** one new field (`ADB.allowedProcs`, account-wide table of `[itemID] = true`). Additive; no existing field changes.
+
+### v2.25.1
+
+- **Fix: auto-open containers stopped firing from the v2.24.0 debounce path.** The new BAG_UPDATE debounce frame's OnUpdate closure was created earlier in the file than `EC_HandleAutoOpenContainers` was declared, so Lua's lexical scoping resolved the name to the (nil) global at closure-creation time and the `if EC_HandleAutoOpenContainers then` check was permanently false. Unlocked `Right Click to Open` containers (including post-Pick-Lock lockboxes) sat untouched in bags. Fixed via a forward declaration. Functions on `EC_compCache.*` were unaffected because table-index lookups resolve at runtime.
+- **Text pass: panel descriptions split into action + side-note on separate lines.** The main panel, Sell List, Keep List, and Account Sell List descriptions had embedded grey side-notes inside the white action paragraph. They're now two FontStrings stacked vertically so the white "what this does" reads cleanly and the grey "side info" sits on its own. Main panel also got a paragraph break and the Alt+Right-Click tip lifted to its own line.
+- **Text pass: implementation jargon trimmed across player-facing copy.** Removed "vendoring" / "per-item counters" / "saved and restored by profiles" / "live on the panel" / "cycles through the queue" / "GCD hardware-event rule" and similar from panel descriptions and tip lines. Player-facing copy now answers "what does this do, when does it apply, how do I override it" and nothing else.
+
+### v2.25.0
+
+- **New: Lockpick mode in Process Bags.** Rogues with Pick Lock (spell 1804) now see a `LOCKPICK (N)` section in the Process Bags panel listing every locked container in their bags. The existing `Process Next` button drives the cast via the same secure-button macrotext flow as Disenchant / Mill / Prospect (`/cast Pick Lock` + `/use bag slot`). Each cast opens one box; the existing auto-open driver picks up the unlocked container on the next BAG_UPDATE.
+- **Hold-key-to-drain works the same way.** Bind a key to `Process Next` under WoW Key Bindings and the OS keyboard auto-repeat drains a stack of lockboxes on the GCD, same as for mill / prospect stacks.
+- **Optional combat-exit nudge** (`DB.lockpickNotifyOnCombatExit`, default OFF). When the player exits combat with lockable containers in bags, prints a one-line `N lockbox(es) available. Click Process Next in Process Bags to open.` chat hint.
+- **Engineering Lockpick items and consumable lockpicks not supported in v1.** They need a different interaction model (right-click the lockpick first, then click the box) that doesn't fit the secure-button workflow. Rogues only this release.
+- **Skill check is not surfaced.** Pick Lock has a per-box lockpicking-skill requirement; the cast fails with the standard Blizzard `Lock is too difficult` error if the player's skill is short. EC doesn't pre-filter on skill (would require Blizzard's `GetSkillLineInfo` walk + per-box skill-required lookup table that doesn't exist in 3.3.5a).
+- **Collapsible sections in Process Bags.** Each section header (Disenchant / Mill / Prospect / Lockpick) is now a clickable button with a `v`/`>` indicator. Click to collapse the section's rows; the header stays so you can re-expand. State persists via `DB.processCollapsedModes` so collapsed sections stay collapsed across `/reload` and login.
+- **Cursor skips collapsed sections.** When a cast finishes and the cursor moves forward, collapsed-section entries are skipped. The skip-arrow (`>`) cycles past them too. If you collapse the section the cursor is on, the cursor jumps out to the next non-collapsed entry. Yellow row highlight still tracks the armed entry across all of this.
+- **Pick Lock completion fires the panel refresh via `UNIT_SPELLCAST_SUCCEEDED`.** `BAG_UPDATE` doesn't fire for a lockbox's lock-state change (slot contents unchanged) and `ITEM_LOCK_CHANGED` doesn't reliably fire either, so the cast-name match is the most reliable trigger. Routed through the existing BAG_UPDATE debounce frame so the panel refresh + auto-open driver runs once within ~120 ms of the cast completing.
+- **Schema:** 3 new DB fields (`DB.lockpickEnabled` boolean, default true; `DB.lockpickNotifyOnCombatExit` boolean, default false; `DB.processCollapsedModes` table, default empty). All additive; no existing field changes.
+
+### v2.24.0
+
+- **Perf fix: BAG_UPDATE storm during pet AOE looting no longer freezes the game.** The Greedy Scavenger picking up 5 items fired 5 BAG_UPDATE events in under 100 ms; each event ran a full 5-bag walk + per-Rare/Epic tooltip scan for the Process Bags rearm + an upgrade-detection pass + container auto-open scan. On busy farming runs that compounded into 1.5 s freezes.
+- **Fix 1: `rearmProcessButton` now skips when Process Bags is unused.** Gated on `panel:IsShown()` OR a keybind being set on the cast button. Users who never open Process Bags pay zero cost on BAG_UPDATE for the rearm path (was the dominant cost). Users with a `Process Next` keybind still get the rearm so the hold-key-to-drain workflow keeps working.
+- **Fix 2: BAG_UPDATE deferred work now coalesces on a 120 ms idle window.** New shared `OnUpdate` frame (`EC_compCache.bagUpdateFrame`) waits for the burst to settle, then runs `EC_HandleAutoOpenContainers`, `checkBagsForUpgrades`, `rearmProcessButton`, and the panel refresh (when shown) ONCE per burst rather than per event. `EC_HandleBagFullForCycle` stays synchronous so the auto-loot cycle's threshold response is unchanged (its internal 1.5 s hysteresis already debounces bag fluctuations).
+- **Fix 3: `bagSlotAffixData` cache keyed by `itemString`.** Repeat affix scans across rearm bursts are now O(1). Stores `false` for "scanned, no affix" so non-affixed items also skip the tooltip scan on re-encounter. Per-session, cleared on `/reload` (same lifecycle as `bindCache` / `processCache` / `chanceOnHitCache`).
+- **No schema, no UI, no behaviour change.** Pure perf refactor. Existing toggles, settings, lists, and protections all work identically.
+
+### v2.23.0
+
+- **Affix-aware protection: exact-rank duplicate gate.** A new opt-in child checkbox on the Protection Settings panel sits under the existing `Protect items with random affixes (Rare/Epic)` toggle. When on, EC lets bag drops of an affix you already own at the same rank fall through to your normal sell / Delete List / Process Bags Disenchant rules. Different ranks of the same affix stay protected so the player can still collect all four. Default off so v2.22.0 upgraders see no behaviour change until they opt in.
+- **Description-based matching.** Project Ebonhold uses two unrelated names for each affix - the item-suffix name (e.g. `of Inner Light`) and the engraving-spell name (e.g. `Spirit Surge II`). The bridge is the **effect description text** (`Increases your total Spirit by 6%`), which appears verbatim in both the item's tooltip and the engraving spell's tooltip. EC walks the player's spellbook at login (and on `LEARNED_SPELL_IN_TAB` / `SPELLS_CHANGED`) for spells whose tooltip contains `engrave this affix`, pulls the description string after the colon, and stores a normalised set. On a bag item, EC scans the tooltip for the affix description (between PE's `@affix@` markers, or via a fallback set-match on the live tooltip where PE has stripped the markers) and tests it against the set. Rank semantics fall out naturally: rank I says `by 3%`, rank II says `by 6%`, etc. - so a description match implies an exact-rank dupe.
+- **Tooltip annotation honesty.** When the dupe gate releases an item, the bag-tooltip line flips from `Protected - Random affix` to `Allowed - <Affix Name> rank <N> already known` (light green), so the player can audit decisions before merchants run. Drops of unknown ranks still show the protect line.
+- **PE-not-detected fallback.** The child checkbox greys out and the explanatory note swaps to `Project Ebonhold addon not detected.` when `_G.ProjectEbonhold` is nil at runtime. Lets EC keep working on non-PE 3.3.5a clients (the rest of the addon is server-agnostic) without throwing or silently misbehaving. EC does not declare PE as a `.toc` Dependency - it's runtime-gated only.
+- **Diagnostic commands.** `/ec affixdump` reruns the spellbook scan and prints the size of the known set plus the first eligible bag item's match result. `/ec affixfind <text>` prints every description containing the search string. Both are undocumented; safe to leave in for future debugging.
+- **Schema:** 1 new DB field (`DB.affixAllowExactDupes`, boolean, default false). Additive; no existing field changes.
+
+### v2.22.0
+
+- **New panel: Process Bags.** Dedicated sidebar entry (between Protection Settings and the list panels) that scans your bags for items you can disenchant, mill, or prospect via your known profession spells (Disenchant 13262, Milling 51005, Prospecting 31252). Lists eligible items grouped by mode with a count of available casts per stack, and drives the casts via a single `Process Next` button.
+- **Hardware-event hand-off.** 3.3.5a flags `CastSpell` on bag items as protected (same wall that prevents `UseContainerItem` from working out of a `BAG_UPDATE` handler). The cast button is a `SecureActionButtonTemplate` whose `macrotext` is rewritten between casts to point at the next eligible bag slot - so each player click fires a real `/cast SPELL` + `/use bag slot` macro, exactly the same way a hand-rolled macro would. Re-arming happens on `BAG_UPDATE` (which fires after every cast consumes a slot or stack) and on `PLAYER_REGEN_ENABLED` (to cover the combat-lockdown gap where `SetAttribute` can't run).
+- **Stable cursor across the cast window.** The armed target tracks the actual (bag, slot) pair, not a numeric list index or itemString. Locked slots are kept in the list during the half-second a cast resolves, so the cursor doesn't briefly flicker off the item being milled / prospected. Two stacks of the same item in different bag slots are distinct cursor targets.
+- **Skip arrow + row click.** The `>` arrow cycles through the queue without casting. Left-click any row to pick it directly. Sticky mode preference: skipping from DE rows to a Mill stack keeps the cursor on Mill after each cast until that mode's stacks run out.
+- **Yellow row highlight** shows the currently-armed target so you can see what's about to cast before clicking.
+- **Affix-protected items are hidden from the Disenchant list** when `Protect items with random affixes (Rare/Epic)` is on. Consistent with the v2.19.0 strict-protection semantics: an affixed Rare/Epic ring is the same itemID as an unaffixed one, so the user can't safely list one for processing without risking the other. Toggle off to allow DE'ing affixed gear.
+- **Cross-list interaction.** Keep List items are skipped (Keep always wins). Items on the Sell or Delete List are still eligible since processing them into materials is usually more useful than vendoring or destroying them - explicit click intent. Currently-equipped items are skipped.
+- **Per-character ignore list.** Right-click any row to add the itemID to `DB.processIgnored`. A `Clear Ignored (N)` button on the panel restores everything in one click; the chat message when ignoring tells you about the restore button so the action isn't a black hole.
+- **Disenchant rarity cap** (`DB.processMaxDEQuality`, default Epic) with a Green / Blue / Epic dropdown.
+- **Include Soulbound toggle** (`DB.processIncludeSoulbound`, default OFF) - Soulbound disenchants are irreversible and often unintended, so off by default.
+- **Mill / Prospect minimum stack of 5.** Both spells consume 5 reagents per cast; stacks below 5 are skipped.
+- **Empty-state messaging.** If you don't know any of the three spells, the panel shows a friendly "Learn Disenchant, Milling, or Prospecting to use this panel" rather than an empty list.
+- **Minimap button gains a middle-click action** that opens Process Bags directly. Tooltip is now `Left: Options | Middle: Process Bags | Right: Toggle Addon`.
+- **New Bindings.xml entry**: `CLICK EbonClearanceProcessCastBtn:LeftButton` so you can bind a key for `Process Next` under the WoW Key Bindings menu. Bind a key and **hold it** to drain a stack: OS keyboard auto-repeat fires the secure button on each GCD tick, so one held key handles all 8 casts of a Bruiseweed x40 stack in ~12 seconds (vs. 8 manual clicks). 3.3.5a's protected-function rule + the 1.5 s profession GCD make this the fastest possible workflow on the WotLK client; a true one-click-N-casts isn't reachable client-side.
+- **Repositioning: README and in-addon copy now frame EbonClearance as a bag manager** (vendoring, deletion, looting, protection, profession processing) rather than just an auto-vendor. The main panel description mentions Process Bags. The `.toc` Notes line, the welcome label, and the file-header comment all updated for honesty about the addon's current scope.
+- Schema: 3 new fields, all default to safe values. Additive migration; no existing field changes.
+
+### v2.21.0
+
+- **Fast Loot safety upgrade: queue + throttle replaces the v2.16.0 tight loop.** The previous Fast Loot implementation fired `N` `LootSlot` calls in one frame on `LOOT_READY` - the exact pattern that triggers anti-flood disconnect protection on busy / laggy 3.3.5a private servers. v2.21.0 queues slot indices and drains them via an `OnUpdate` throttle (one slot every ~110 ms), which is much gentler on the server. The toggle, the schema (`DB.fastLoot`), the BoP-bind auto-confirm hook, and the `autoLootDefault` CVar gate are all unchanged - this is a refactor of the internal driver only.
+- **Per-slot re-validation**: before each `LootSlot` call the driver re-checks `GetLootSlotInfo` so server-side loot state desync (a slot becoming locked or invalid between `LOOT_READY` and the queue's turn) is handled cleanly. Locked items are skipped and left in the loot window for manual handling.
+- **Bag-space pre-check**: a new `EC_compCache.canLootItem(link)` helper checks free bag slots (item-family aware, so specialty bags like quivers aren't mistaken for storage) and existing-stack room before queuing each `LootSlot` call. If an item wouldn't fit, the slot is skipped and the loot window stays open - cleaner than letting the server reject and spam `ERR_INV_FULL` to the chat frame.
+- The 0.3 s `LOOT_READY` debounce from v2.16.0 is gone (the queue is naturally idempotent - re-populating on a fresh `LOOT_READY` just wipes and refills).
+- No new DB fields, no migration, no UI change. Existing users with Fast Loot on get the safety upgrade automatically; everyone else is unaffected.
+
+### v2.20.2
+
+- **Tightened the grey explanatory notes across the Protection Settings and Scavenger Settings panels.** The 6 longest notes had been written explaining design rationale, version history, and edge cases - useful for me when implementing, useless to the player using the panel. New principle: notes answer "what does this do, when does it apply, how do I override it" and nothing else. The 5 Protection Settings toggles now have one-sentence notes (down from 2-4 sentences each); the Fast Loot note is one sentence shorter; the right-click context-menu hint was also using pre-v2.14.0 list names (`whitelist, blacklist, delete`) and now reads `Sell, Keep, Delete, Sell Now`.
+- **Added a principle comment near `MakeLabel`** so future contributors apply the same lens when writing new panel text.
+- Pure text/docs change; zero behaviour change, zero schema change.
+
+### v2.20.1
+
+- **Refinement: Chance-on-hit protection now applies to the auto-rule sweep only.** v2.20.0 protected items with a `Chance on hit:` proc against BOTH the per-rarity quality-threshold sweep AND explicit Sell/Delete List entries. That's too strict for chance-on-hit, where item value is finite (once you extract the proc spell via Project Ebonhold's extraction system, the base item is worthless and the user typically lists it for vendoring). v2.20.1 mirrors EC's existing v2.13.x quest-item safety-net design: explicit user intent (Sell List entry, Delete List entry, Alt+Right-Click `Sell Now`) overrides the safety net; only the auto-rule sweep is gated.
+- **Affix protection unchanged.** Affixes are random per-instance and the user can't anticipate which copy will be affixed when listing an itemID, so the strict "protect even when listed" design from v2.19.0/v2.20.0 stays in place. The two protections now have intentionally different semantics: affix protection is strict (can't be bypassed by listing); chance-on-hit protection is auto-rule-only (listed items pass through).
+- **Tooltip annotation narrowed accordingly.** A chance-on-hit weapon on the Sell List now shows `[EC] Will Sell` (plain) instead of `[EC] Protected - Chance on hit`. A chance-on-hit weapon matched by the quality sweep still shows `[EC] Protected - Chance on hit`.
+- **Protection Settings panel note updated** to reflect the new behavior.
+
+### v2.20.0
+
+- **Bugfix: narrowed v2.19.0 affix detection to avoid misfiring on standard random suffixes.** `Darkcloth Shoulders of the Sorcerer` was being incorrectly protected as having a PE roguelite affix, blocking legitimate vendor sales. Root cause: v2.19.0's link-suffix check returned true for any non-zero `ItemRandomSuffix.dbc` entry, conflating standard vanilla-era suffixes (`of the Bear`, `of the Sorcerer`, etc.) with PE's roguelite affix system. Fix: detection now requires the tooltip title to BOTH differ from the base name AND end with a roman-numeral rank (` [IVXLCDM]+$` at end). PE affixes always have a rank (`of Inner Light I`, `of Inner Light II`, `of Fortified by Pain IV`); standard random suffixes don't. The link-suffix helper (`EC_compCache.linkHasAffix`) is retained as a diagnostic but no longer drives the protection decision.
+- **New: Chance-on-hit protection.** Project Ebonhold lets players extract proc spells from weapons (the green `Chance on hit:` tooltip line) and apply them to other items - so an item with that proc text is meaningfully different from the base itemID even when the user lists the base for selling. The new `Protect items with Chance on hit: effects` toggle on the Protection Settings panel skips items with that proc line at sell / delete decision time. Default ON. Tooltip shows `[EC] Protected - Chance on hit` on items kept by this rule. No quality filter (chance-on-hit is a stable per-itemID property; extraction works regardless of rarity). Per-itemID cache makes the tooltip-scan one-time-per-itemID rather than per-hover.
+- **UI: renamed `Keep List Settings` panel to `Protection Settings`.** The panel originally held only Keep-List auto-protect toggles (v2.15.0); it has since grown to cover random-affix protection (v2.19.0) and now Chance-on-hit protection (v2.20.0). The broader name reflects the full scope.
+- **Zero schema migration beyond one new boolean field** (`DB.protectChanceOnHitItems`, default ON). Existing user settings carry forward unchanged.
+
+### v2.19.0
+
+- **New: Affix protection for Rare/Epic items.** Project Ebonhold's roguelite system randomly applies " of X" suffix affixes (with up to 4 ranks - e.g. `Thorbia's Gauntlets of Fortified by Pain IV`) to dropped items, adding proc effects. The base itemID is identical to the plain version, so a user with the base itemID on their Sell List or Delete List would accidentally dump the affixed copy. The new `Protect rare/epic items with random affixes` toggle on the Protection Settings panel skips affixed Blue/Purple instances at sell / delete decision time, even when the itemID is explicitly listed. Tooltip shows `[EC] Protected - Random affix` on these items so users see why the merchant cycle is leaving them alone. **Default ON** for fresh installs and upgrades; users who want pre-v2.19.0 behaviour toggle it off.
+- **Two-layer affix detection.** Primary: parses the item link's `suffix-DBC` field (`ItemRandomSuffix.dbc` / `ItemRandomProperties.dbc` ID, position 7 in the 3.3.5a link format) - cheap, no tooltip scan. Fallback: compares the live tooltip's title to `GetItemInfo`'s base name - if they differ, the title has extra text appended (an affix). The fallback covers any custom PE mechanism that doesn't touch the link's suffix slot. Both layers ship in v2.19.0 so the protection works regardless of how PE implements the affix system server-side.
+- **Quality scope: Rare (Blue) and Epic (Purple) only.** White and Green items with random affixes still sell/delete normally when listed - rare drops are where the high-value affixes appear on PE, and protecting all qualities would clog bags with low-tier affixed greens. Future request can widen the scope if needed.
+- **Zero existing-behaviour change beyond the new protection.** The Keep List still takes precedence over everything (manual entries already do); the affix gate is an additional check that runs ONLY when the item would otherwise sell or delete. Bug-report includes `Protect Affixed Rare Items: <bool>` for diagnostics.
+
+### v2.18.0
+
+- **Refactor: split `CreateListUI` (407-line monster) into five small helpers on `EC_compCache`.** The list widget used by every list panel (Sell List, Account Sell List, Keep List, Delete List) had accreted manual-add row, sort controls, search input, "Add matching in bags" row, scroll area, row pool, and refresh closure across v2.x.0 releases - all in one 400-line function. Pure layout chunks now live in `EC_compCache.buildListHeaderRow` / `buildListSearchAndSortRow` / `buildListMatchRow` / `buildListScrollArea` / `makeListRowFactory`. Each helper has a single responsibility and is individually grep-able. `CreateListUI` shrunk to 261 LOC (~36% reduction) and only holds state, the `Refresh` closure, and OnClick wiring that needs `Refresh` in scope.
+- **Pure refactor; zero behaviour change.** Every list panel renders and behaves identically to v2.17.0. Existing user settings carry forward unchanged. The `docs/CODE_REVIEW.md` backlog item 2 is now marked Resolved. `tests/test_layout_reactivity.lua` test 2 was updated to follow the OnSizeChanged hook call into `EC_compCache.buildListScrollArea` (the structural invariant - reactive-width hook chain intact - is unchanged; the test just had to learn where the hook moved to).
+
+### v2.17.0
+
+- **Refactor: extracted the Interface Options panel OnShow boilerplate into a single helper.** All 11 panels (Main, Character Settings, Scavenger Settings, Merchant Settings, Profiles, Import/Export, Delete List, Keep List, Protection Settings, Sell List, Account Sell List) previously started with the same 5-line preamble (`EnsureDB` + `EC_UpdatePanelWidth` + `inited` guard + refresh-or-build branch + optional scroll-wrap). The new `EC_compCache.initPanel(self, refresh, build, wrapScroll)` helper consolidates that into one place, so adding a new panel goes from ~30 lines of preamble + body to ~5 lines plus the panel-specific bodies, and any future preamble change (e.g. a `UI_SCALE_CHANGED` width recompute) lands once instead of 11 times. Hung off `EC_compCache` rather than as a file-scope local to stay under Lua 5.1's 200-locals-per-main-chunk cap.
+- **Pure refactor; zero behaviour change.** All panels render and refresh identically to v2.16.0. The `docs/CODE_REVIEW.md` backlog item 4 is now marked Resolved. The `tests/test_layout_reactivity.lua` test 6 was updated to recognise the new `end, true)` closer that marks an initPanel call with `wrapScroll=true` (alongside the old literal `EC_WrapPanelInScrollFrame` call) and to fix a pre-existing block-boundary bug that scoped each panel's check too broadly.
+
+### v2.16.0
+
+- **New: Fast Loot.** Optional toggle on the Scavenger Settings panel (default OFF). When enabled, EbonClearance drains every slot in the loot window the moment `LOOT_READY` fires, so manual corpse loot, fishing catches, gift bags, mailbox attachments, profession openables, and dungeon/raid loot windows vacuum into bags instantly - the loot frame flashes briefly or skips entirely. Honours Blizzard's `autoLootDefault` CVar XOR'd with the `AUTOLOOTTOGGLE` modifier key, so users who want to be selective by holding Shift (or by toggling auto-loot off in interface options) still get the standard loot window. Includes a 0.3 s debounce so the burst of `LOOT_READY` events that fires for a single loot interaction doesn't cause redundant `LootSlot` storms. **Does not** affect the Greedy Scavenger's autonomous corpse looting - that bypasses the player's loot pipeline server-side and is already as instant as the server allows. Useful anywhere a loot window appears for player-initiated looting (which the Scavenger doesn't cover).
+- **New: BoP-bind popup auto-confirm (gated on Fast Loot).** When Fast Loot is on, the `LOOT_BIND` popup ("Are you sure you want to bind this item on pickup?") that would normally block fast-looting on BoP items is auto-confirmed. Items still bind on pickup; you just don't have to click a confirmation. When Fast Loot is off the Blizzard safety prompt is unchanged, so users who haven't opted in keep the prompt as the safety net it was intended to be.
+- **Zero schema migration.** New field `DB.fastLoot` boolean defaults to `false`; existing users keep current behaviour unchanged. Field added by `EnsureDB`'s additive defaulter pattern; no upgrade step needed. Both patterns borrowed from existing reference addons (`FasterLoot` for the loot-drain, `LootClicker` for the BoP-confirm hook).
+
+### v2.15.0
+
+- **Keep List panel decluttered; auto-protect toggles moved to a dedicated `Protection Settings` sub-panel.** Previously the Keep List screen mixed the actual list of protected items with three auto-protect toggles (Auto-protect equipped gear, Auto-protect upgraded gear in bags, Auto-protect items in Blizzard equipment sets) and their multi-paragraph explanatory notes, totalling eight stacked widget groups above the list. The list now sits directly under the header, description, and Shift-click hint - matching the visual rhythm of Sell List, Account Sell List, and Delete List. A new `Protection Settings` sidebar entry holds the three toggles + their notes, parented under the addon root like the existing Scavenger Settings / Merchant Settings panels.
+- **Design-language pass: checkbox labels standardized to Sentence case across all panels.** Four Title Case outliers updated to match the prevailing Sentence case convention used by the auto-protect labels and most newer additions: `Repair Gear while Vendoring` -> `Repair gear while vendoring`, `Enable Item Deletion` -> `Enable item deletion`, `Summon Greedy Scavenger after Vendoring` -> `Summon Greedy Scavenger after vendoring` (proper noun preserved), `Enable Only for Listed Characters` -> `Enable only for listed characters`. Audit of all other panel text (panel headers, descriptions, hints, sub-section headers, explanatory notes, button text, color codes) confirmed the rest of the addon was already consistent: `MakeHeader` everywhere for panel titles, `MakeLabel` with terminal period for descriptions, `GameFontHighlight` (yellow) for instructional hints, `GameFontNormalSmall |cff888888` for explanatory notes under controls, `GameFontNormal` for sub-section headers, Title Case verb phrases for buttons.
+- **Zero schema change.** `DB.autoAddEquipped`, `DB.autoProtectUpgrades`, and `DB.autoProtectEquipmentSets` field names are unchanged; the `PLAYER_EQUIPMENT_CHANGED` and `EQUIPMENT_SETS_CHANGED` reactive handlers, the `BAG_UPDATE`-driven upgrade scan, the tooltip annotations (`Auto-Protected (Worn/Upgrade/Set)`), and the `/ec clean upgrades` slash command all continue to work without modification. Existing user settings carry forward exactly as-is.
+
+### v2.14.0
+
+- **Lists renamed for clarity - Whitelist → Sell List, Blacklist → Keep List, Deletion List → Delete List.** Same data, clearer labels. Internal `DB.whitelist`, `DB.blacklist`, `DB.whitelistProfiles`, `DB.blacklistProfiles`, and `DB.blacklistAuto` field names are unchanged so existing user data carries forward exactly as-is - only user-facing UI labels, panel names, tooltip annotations, slash command help, and bug-report sections were updated. The previous "Whitelist" terminology was a long-standing source of confusion: in tech "whitelist" usually means "approved for the action being gated," but colloquially it often reads as "approved/kept." EC's whitelist was the **sell list** (approved for selling) - the opposite of the colloquial reading. Action-verb names (Sell List / Keep List / Delete List) make the function self-documenting: the name describes what the addon does with items on each list.
+- **Tooltip annotations simplified.** Bag-item hover annotations now use action-verb labels without redundant suffixes: `Will Sell`, `Protected`, `Will Delete` for the canonical states, `Won't Sell - Currently Equipped` and `Won't Sell - No Vendor Price` for the explicit-Sell-List-but-blocked cases (clearer than the previous `On Sell List - X (cannot sell)` framing which read as a contradiction). `Auto-Protected (Worn/Upgrade/Set)` and the per-rarity quality-rule strings (`Will Sell - Green iLvl X (cap Y)` etc.) are unchanged because their suffixes carry useful diagnostic info.
+- **Polish: `Greedy Scavenger resummoned.` close-out line now fires on every EC-driven merchant cycle.** Previously the chat acknowledgement only fired when the cycle was bag-full triggered (the only path that set the `pendingAnnounce` flag). Manual merchant visits where EC sold items silently re-summoned the Scavenger without the close-out. `FinishRun` now arms the flag before every `EC_SummonGreedyWithDelay` call so the line fires consistently. The "already-out" branch in `SummonGreedyScavenger` still clears the flag silently when the Scavenger was never dismissed (e.g. you sold only greys at a normal vendor without the Goblin cycle), so no spurious prints.
+
+Pure UI/docs refactor + one-line behaviour polish; zero schema change. Existing profiles and saved lists continue to work without migration.
+
+### v2.13.0
+
+- **New: Equipment Manager protection.** A new opt-in toggle on the Blacklist (Keep) panel - *Auto-protect items in Blizzard equipment sets*. When enabled, every item in any of your saved Blizzard Equipment Manager sets lands on the Keep list with origin tag `"set"` (joining v2.12.0's `"equipped"` and `"upgrade"` tags). Solves the dual-spec / off-set problem: items assigned to your alternate gear set sit in bags between swaps and were unprotected by `autoAddEquipped` (which only catches currently-equipped slots). One-shot sync at toggle-on plus reactive `EQUIPMENT_SETS_CHANGED` event handler so set-edits live-sync without spamming chat. Tag promotes from `"set"` to `"equipped"` the next time you actually wear the item via the existing `protectEquipSlot` refresh branch. Tooltip shows `[EC] Auto-Protected (Set)` on items kept by this rule. New field: `DB.autoProtectEquipmentSets`. Default off.
+- **New: ElvUI bag buttons (Sell / Keep / Delete).** Three small 20×20 icon buttons in the top-right of `ElvUI_ContainerFrame` for ElvUI users. Drag a bag item onto the **Sell** (gold coin, green hover), **Keep** (shield, orange hover), or **Delete** (red X, red hover) button to add it to the matching list. The Sell button doubles as a manual vendor trigger when you click it at a merchant. Right-click any of the three to jump the EC options frame to the matching list panel. Self-gated on `_G.ElvUI_ContainerFrame` existence at call time, so non-ElvUI users (Bagnon, ArkInventory, stock bags) see no change at all. Built lazily 2 seconds after `PLAYER_LOGIN` to give ElvUI's container frame time to construct.
+- **New: quest-item safety net for auto-sell and auto-delete.** `EC_compCache.isQuestItem(itemID)` classifies items by `GetItemInfo`'s 6th return (the `"Quest"` itemClass). The auto-rule sweep (per-rarity quality threshold) refuses to act on quest-class items even when they would otherwise match. Catches the failure mode where a per-rarity rule sweeps up a fresh quest item the user didn't anticipate. Manual paths (Alt+Right-Click → Sell Now / Delete Now, explicit whitelist entries, explicit delete-list entries) are NOT gated - those represent explicit user intent and override the safety net, mirroring an established design in the niche. Tooltip honesty: a quest-class item caught only by the auto-rule path now reads `[EC] Protected - Quest item` on hover so the annotation matches the actual `EC_IsSellable` outcome.
+- **New: auto-open containers now resumes automatically on combat exit, with a deferred-announce hint.** `EC_HandleAutoOpenContainers` already bailed on `InCombatLockdown()` (because `UseContainerItem` on a lockbox triggers an "Opening" cast that gets interrupted by damage), but the queue could sit indefinitely if no further `BAG_UPDATE` arrived after combat ended. Now registers `PLAYER_REGEN_ENABLED` and re-fires the driver on combat exit. Also prints a one-shot `[EC] Deferred N container(s) until out of combat.` chat line the first time the in-combat bail trips with at least one openable item in bags, so the user knows the addon noticed them. The flag clears on `PLAYER_REGEN_ENABLED` so each combat instance announces fresh.
+- **New: documented related projects in NOTICE.md.** A new "Related projects in the PE auto-vendor niche" subsection acknowledges that other same-niche addons exist, notes the late-April / early-May 2026 timing overlap on `autoAddEquipped` / an in-combat-only summon toggle / a welcome popup, and states EC's equivalents were written independently against the same Blizzard 3.3.5a API surface. Lays the structural-difference evidence on the record while the timing is fresh.
+- **Defaults: merchant mode flipped from `goblin` to `both` (renamed to `All Merchants`) for fresh installs.** The Merchant Settings → *Sell at:* dropdown's third option is now labelled `All Merchants` instead of `Both (All Merchants)`, and brand-new installs default to it so users who haven't unlocked the Goblin Merchant pet yet still get useful auto-vendor behaviour at any normal merchant. Existing users with a saved valid value (including `goblin`) keep their choice - the EnsureDB type-check defaulter only fires when `DB.merchantMode` is nil or somehow corrupted to a non-string value.
+- **Fix: quest-item safety net narrowing follow-up.** Initial v2.13.0 implementation of the safety net early-returned at the top of `EC_IsSellable` and vetoed BEFORE the whitelist match was evaluated. Users with quest-class items deliberately whitelisted for vendoring (e.g. PE-specific trash like *Gorilla Fang*, itemID 2799, vendor 67c) saw `[EC] Will Sell - Whitelisted` in the tooltip but the merchant cycle silently skipped them. Narrowing per an established niche design: explicit user lists override; the auto-rule sweep keeps the safety net. The `BuildQueue` delete branch had its identical gate removed for symmetry - delete-list is also explicit user intent.
+
+### v2.12.0
+
+- **New: per-rarity "Use equipped iLvl" mode in Merchant Settings.** Each rarity row in the Quality Sell Threshold table gains a `Use equipped iLvl` tickbox alongside the existing `max iLvl` input and Bind filter. When checked, the static cap is ignored at runtime and the rule fires when the looted item's iLvl is below the player's currently-equipped iLvl in the same slot. The cap is therefore self-regulating - low-level players never auto-vendor their actual gear because the threshold IS their current gear. Multi-slot items (rings, trinkets, 1H weapons) compare against the lower of the two equipped iLvls so any genuine upgrade triggers; empty slots are skipped entirely (the rule won't fire if any candidate slot is empty, on the assumption that the player wants to fill that slot). Trade goods, reagents, consumables, and any item with no `equipLoc` are protected by the early-return on the slot lookup. Bind-type filter applies in either mode. New field: `DB.qualityRules[q].useEquippedILvl`. Defaults `false` for upgraders; **fresh installs default whites and greens to enabled + dynamic-cap mode** so brand-new players get useful auto-vendoring out of the box without risk to their gear.
+- **New: fresh-install detection drives a small set of opt-out-friendly defaults.** A check at the top of `EnsureDB` captures `(EbonClearanceDB == nil) and (EbonholdStuffDB == nil)` BEFORE the legacy-rename migration, so an EbonholdStuff upgrader isn't treated as fresh. Brand-new installs from v2.12.0+ get `DB.autoAddEquipped = true` (one-shot equipped-gear sync at first PLAYER_LOGIN, then PLAYER_EQUIPMENT_CHANGED-driven from there) plus the white + green dynamic-cap rules described above. Existing characters never reach this code path (their SavedVariable predates the new fields, so the type-check defaulters fall through to the existing `false` defaults). The motivation is to fix the long-standing "EC nothing happens on day 1" friction that pushes new users to default-aggressive competitor addons before they discover EC's safety guarantees.
+- **Polish: panel descriptions rewritten for new-player friendliness.** Main panel intro, Whitelist (Character / Account) descriptions, Blacklist (Keep) description, and the Merchant Settings quality-threshold description are all rewritten to lead with what auto-happens out of the box and what the user controls manually, instead of starting from the technical machinery. The `[EC]` colour codes and bullet structures are preserved.
+- **Polish: tooltip annotation distinguishes auto-protect origins.** Items the auto-protect path added now read `[EC] Auto-Protected (Worn)` (v2.10.0 equipped-gear path) or `[EC] Auto-Protected (Upgrade)` (v2.11.0 looted-upgrade path) so the user knows WHICH rule kept the item. `DB.blacklistAuto[id]` is now a string tag (`"equipped"` / `"upgrade"`) instead of a boolean; legacy boolean entries from v2.10.0 / v2.11.0 fall back to the generic `[EC] Auto-Protected` label. **The tag now also refreshes when the user explicitly equips an item that was previously auto-tagged** (e.g. "upgrade" → "equipped"), so equipping a previously-bagged item promotes its tooltip from `(Upgrade)` to `(Worn)` to reflect the user's explicit choice. Manual blacklist entries (no auto-tag) are not touched.
+- **Polish: dynamic-cap kept-item tooltip now reads "Potential Upgrade".** Pre-fix, an item the dynamic-cap rule decided to keep read `[EC] Protected - X iLvl Y not below equipped` - technically true but communicating "rule compared and chose not to sell" rather than the more useful "this could still be useful to you". Both kept-cases (empty candidate slot for dual-wield, or multi-slot loot at or above the weakest populated slot's iLvl) now read `[EC] Protected - X iLvl Y (Potential Upgrade)`. `EC_compCache.isDowngradeVsEquipped` was extended to return a second `reason` value internally for future granularity, but the user-facing tooltip uses one unified message. `EC_IsSellable`'s call site is unchanged - it reads only the boolean return.
+- **Fix: autoProtectUpgrades no longer mass-stamps items when every candidate slot is empty.** Pre-fix, `EC_compCache.checkBagsForUpgrades` fell back to `threshold = lowestEquipped or 0` when both candidate slots were empty (e.g. user logs in with no weapons). Any item with iLvl > 0 was then stamped onto Blacklist + DB.blacklistAuto["upgrade"], which on a heavy-bag character could pollute the Keep list with dozens of low-iLvl daggers / rings / trinkets that weren't actually upgrades against anything. v2.12.0 requires at least one populated candidate slot before stamping; if no slot is populated, the item is skipped this pass. Existing spurious entries from earlier versions are sticky (the auto-stamp can't be un-done automatically because some entries were legitimate upgrades at the time of stamping); use Alt+Right-Click → Remove from Blacklist or run `/ec clean upgrades` (see below) to bulk-clean.
+- **New: `/ec clean upgrades` and `/ec clean upgrades apply` commands.** Walks `DB.blacklistAuto` entries with the `"upgrade"` tag, re-evaluates each against the player's currently-equipped iLvl in the same slot, and reports which entries are no longer upgrades (i.e. stale entries from the v2.11.0 mass-stamp bug or simply outpaced by gear progression). Manual blacklist entries with no auto-tag and `"equipped"`-tagged entries are never touched. The bare report mode prints up to 10 sample item names and counts of deferred (item info not loaded) and skipped (no candidate slot populated) entries; the `apply` form fires a confirmation popup and removes the stale entries from both `DB.blacklist` and `DB.blacklistAuto` on accept. Refreshes the Blacklist (Keep) panel's listUI if open.
+- **New: first-run welcome message and setup popup for fresh installs.** Brand-new installs see a 4-line welcome at first PLAYER_LOGIN explaining the out-of-the-box defaults (greys auto-sell, whites/greens below equipped iLvl auto-sell, equipped gear and looted upgrades auto-protected) plus a 2-button popup (`Keep Defaults` / `Open Settings`). Existing characters upgrading from v2.11.0 or earlier see no change to the existing single-line `Enabled. Use /ec to configure.` welcome. The trigger is persisted via `DB._needsWelcome` so a `/reload` between addon-load and PLAYER_LOGIN doesn't lose it; the flag is consumed on first display.
+- **Defaults: auto-loot cycle ON, keep-bags-open OFF for fresh installs.** The auto-loot cycle (Greedy Scavenger pet management + Goblin Merchant auto-summon at bag-full) was previously default off and is the headline PE feature - a brand-new user shouldn't have to discover the toggle in Scavenger Settings to feel the addon working. `DB.autoLootCycle` now defaults to `isFreshInstall`. Separately, `DB.keepBagsOpen` defaults flipped from `true` to `false` per UX feedback - bags closing on merchant close is the less-intrusive default. Existing characters keep their saved values for both fields (the type-check skips when the field is already a boolean); only fresh installs see the new defaults.
+- **Polish: autoProtectUpgrades description clarifies its relationship with the new dynamic-cap rules.** The grey note under the `Auto-protect upgraded gear in bags` checkbox on the Blacklist (Keep) panel now spells out that the toggle is **redundant** when a rarity in Merchant Settings uses `Use equipped iLvl` (the dynamic cap already excludes upgrades from auto-sell), and **useful** when the user manually picks fixed-cap mode with a `max iLvl` above their equipped iLvl - then an upgrade falling below that cap could vendor without this protection. Helps users understand why the toggle is default-off.
+
+### v2.11.0
+
+- **New: auto-protect upgraded gear in bags.** A second checkbox on the Blacklist (Keep) panel, alongside the v2.10.0 auto-protect-equipped toggle. When enabled, every item that lands in your bags is iLvl-compared against the item currently equipped in its slot type; if the bag item's iLvl is higher, it's stamped onto the Keep list automatically. Closes the gap left by v2.10.0's PLAYER_EQUIPMENT_CHANGED-driven path: that path only protected the *previously-equipped* item the moment the user swaps in an upgrade, leaving fresh drops in bags unprotected against active per-rarity iLvl-cap rules until the user actually equipped them. Multi-slot equipLocs (rings, trinkets, 1H weapons) compare against the LOWER of the two equipped iLvls so any genuine upgrade triggers; empty slots are ignored from the comparison so an empty ring-2 doesn't suppress detection against an iLvl-250 ring-1. Items already on Whitelist or Deletion are silently refused via the existing add-time conflict guard. Per-itemID dedupe via `EC_compCache.upgradeProcessed` keeps the steady-state cost to one `GetItemInfo` lookup per never-seen bag item; the cache resets on `/reload`. New field: `DB.autoProtectUpgrades`. Default off.
+- **Tooltip annotation generalised from "Equip Auto-Protected" to "Auto-Protected".** The v2.10.0 wording presumed a single equip-time origin for the auto-protect path; v2.11.0's upgrade-detection path also stamps `DB.blacklistAuto`, so the label now covers both origins consistently.
+- **New: bag-full hysteresis.** Auto-loot cycle's bag-full trigger now requires the bag-slot threshold to be continuously crossed for 1.5 s before tearing down the looting pet and summoning the merchant. Suppresses spurious cycles on transient bag fluctuations - a vendor-window opening, an item splitting, an inventory shuffle - that previously fired the cycle even though the player wasn't really at capacity. The hysteresis tracks via `EC_compCache.bagFullSince`, cleared the moment the count rises back above threshold; a scheduled re-check fires the cycle even if no further `BAG_UPDATE` arrives during the confirm window (e.g. one big loot leaves the player idle).
+- **New: combat-only summon as opt-in setting.** New `Only summon Greedy Scavenger when out of combat` checkbox on Scavenger Settings. When enabled, every CallCompanion path the addon issues - bag-full restore, stuck-detection resummon, post-merchant restore - defers until combat ends. The pet-tick retry path picks it up the moment `InCombatLockdown` clears. Default off so existing users see no behaviour change. New field: `DB.summonOnlyOutOfCombat`.
+- **New: reactive panel layout on Interface Options frame resize.** Pre-v2.11.0 the addon's sub-panels stayed clamped at their build-time width because `EC_PANEL_WIDTH`, every label's wrap width, every scroll-content width, and every list-frame width was a snapshot taken at the panel's first OnShow. Dragging the Interface Options frame's resize handle did nothing to the addon's panels. v2.11.0 hooks `InterfaceOptionsFramePanelContainer`'s `OnSizeChanged` once and routes every registered widget through `EC_compCache.refreshLayouts` on each resize. Labels re-wrap, scroll content re-fits, scrollbar arrows track the new edge. No widget rebuilds or flicker; pure width refresh. The list frames already tracked via BOTTOMRIGHT anchors so their visible drift was just label clutter on top, fixed by the same width refresh.
+- **Fix: Goblin Merchant summon no longer false-fails during heavy instant-cast combat.** `EC_IsPlayerBusy()` checked cast / channel / movement but not the GCD because 3.3.5a has no clean GCD query. Rapid instant-cast rotations slipped through the gate, fired `CallCompanion` into a GCD slot, were silently dropped by the server, and burned the 3-attempt goblin retry budget on calls that never landed - resulting in `Goblin Merchant failed to summon. Resuming looting.` followed by another bag-full trigger and another false failure. v2.11.0 stamps `EC_compCache.lastPlayerCastAt` on every `UNIT_SPELLCAST_SUCCEEDED` (extending the existing v2.9.2 profession-cast hook to cover all spells) and treats the next 1.5 s as "busy" too. Attempts that would have fallen into a GCD slot now defer through the busy gate instead of consuming the retry budget; the cycle waits for a clear window, summons cleanly, and the user no longer sees double / triple "summoning..." cycles before one lands. As a belt-and-braces, when two retries DO miss anyway (haste-reduced GCD, server reject for any other reason) the addon now prints `Goblin Merchant retrying. Hold off your rotation briefly so the summon can land.` once per cycle, giving the user a ~2.5 s window to pause before the final attempt fires.
+- **Fix: Scavenger never re-summons if a combat keypress lands in the same client tick as the post-merchant summon.** `SummonGreedyScavenger` (the `FinishRun` → `EC_SummonGreedyWithDelay` path) optimistically cleared `EC_addonDismissed` and `EC_compCache.pendingAnnounce` immediately after firing `CallCompanion`, on the assumption that the call would land. When the user's combat key entered the cast pipeline at the same instant, the `CallCompanion` was silently rejected by the server but we'd already dropped the only flag (`EC_addonDismissed`) that `EC_TryResummonScavenger` retries on - so the Scavenger stayed gone for the rest of the session unless the user mounted/dismounted or ran `/ec`. v2.6.1 fixed this exact pattern for the *tick-driven* path; the principle never made it into the *delayed-call* path. v2.11.0 restructures the post-CallCompanion block so the dismiss-flag clear only runs when the Scavenger was already out on entry (a no-op call); when we actually fire `CallCompanion`, the pet-tick at `EC_PetCheckTick`'s transition handler stays the canonical "summon confirmed" signal and clears both flags after observing `scavengerOut=true`.
+
+### v2.10.0
+
+- **New: auto-protect equipped gear.** A new `Auto-protect equipped gear` checkbox on the Blacklist (Keep) panel. Toggling on runs a one-shot sync of every currently equipped slot (excluding shirt + tabard) into the per-character Blacklist (Keep); from then on, every gear swap auto-adds the new item to the Keep list via `PLAYER_EQUIPMENT_CHANGED`. Closes the most common source of accidental auto-sells: a replaced upgrade slides into bags and matches an iLvl rule on the next vendor visit. Because the Blacklist veto in `EC_IsSellable` short-circuits any auto-rule, an auto-protected item is safe even if every other rule would otherwise pick it up. Cross-list conflicts (item already on Whitelist or Deletion list) are silently refused, mirroring the existing add-time guard. Default off; existing users see no behaviour change until they enable it. New fields: `DB.autoAddEquipped`, `DB.blacklistAuto`.
+- **New: tooltip annotation labels auto-protected entries distinctly.** Items the auto-protect path added show `[EC] Equip Auto-Protected` (warning yellow) at hover time. Manually-blacklisted items keep the existing `[EC] Protected - Blacklisted` label. Users who want an auto-protected item sold can Alt+Right-Click it and use the orange `Remove from Blacklist (Do Not Sell)` row in the v2.9.2 smart context menu - both `DB.blacklist` and `DB.blacklistAuto` clear in lockstep, so the label can never claim auto-protection for an item the user has explicitly removed.
+- **New: bind-type filter on per-rarity sell rules.** Each quality row in Merchant Settings (White / Green / Blue / Purple) now exposes a `Bind: [Any bind type / BoE only / BoP only]` dropdown alongside the existing `enabled` and `max iLvl` controls. `Any bind type` preserves v2.4.0+ behaviour (the rule applies regardless of bind type). `BoE only` restricts the rule to items the tooltip says "Binds when equipped"; `BoP only` restricts to items showing "Binds when picked up" or "Soulbound". Items with no bind line at all (consumables, reagents, trade goods, quest items) are protected when the dropdown is set to anything other than `Any bind type`. Detection uses the same hidden `EC_scanTooltip` frame the auto-open lootable-container scanner uses; results are cached per-`itemID` for the session. Unlocks the most common endgame clearance pattern (`sell my BoP off-spec drops, never my BoE crafted pieces`) which previously required hand-whitelisting every BoE drop. New field: `DB.qualityRules[q].bindFilter`. Defaults to `"any"` for every rarity row; existing users see no behaviour change.
+- **New: tooltip annotation reflects the bind-type filter.** When a rule rejects an item because of its `bindFilter`, the bag tooltip now shows `[EC] Protected - <Rarity> rule wants <BoE/BoP> only` (warning yellow) instead of "Will Sell". Items that pass the bind filter still show the existing `Will Sell - <Rarity> iLvl X (cap Y)` line. The annotation reads the live tooltip's bind line via a new `EC_compCache.getBindTypeFromTooltip` helper that shares the same `EC_compCache.bindCache` map the bag-scan path uses, so a hovered item only ever incurs the scan cost once per session.
+- **Fix: chat spam during heavy-combat Scavenger recovery.** The "Greedy Scavenger resummoned." chat line introduced in v2.9.2 came with a 2-second post-CallCompanion cooldown to prevent back-to-back duplicate prints. Under heavy combat the server can take 4-6 seconds to flip the companion's summoned flag to true, so the cooldown expired while the addon-dismissed flag was still set, the pet-tick re-fired CallCompanion (and the print) every 2 s until the flag finally cleared, and a single dismiss-and-resummon cycle produced 4-5 chat lines during sustained farming. v2.10.0 separates the print from the retry: a new `EC_compCache.pendingAnnounce` flag, armed by every dismiss path that wants the recovery announced, gates the print so only the first successful `CallCompanion` in a cycle prints. Subsequent retries within the same cycle (which the new 5-second cooldown also makes less frequent) call `CallCompanion` silently. The pet-tick clearing of `EC_addonDismissed` on a successful summon also drops the flag defensively so the next cycle starts clean.
+- **Fix: false-positive "Scavenger went quiet during looting" on silent-Scavenger realms.** The v2.7.0 / v2.8.0 loot-silence stuck signal assumed the pet audibly chats on each loot pickup. On Project Ebonhold the pet's chat events don't reliably reach the chat filter (verified: heavy-farming logs across multiple sessions show zero Scav-speech messages). With the on-summon synthetic refresh of `EC_lastScavSpokeAt`, the signal then fires every ~60 s of farming in a feedback loop - dismissing and resummoning the pet, plus printing a chat line each time. v2.10.0 adds a session-level `EC_compCache.scavSpeechEverHeard` flag set only by real chat-filter matches (not by the on-summon refresh). `EC_IsLootSilenceStuck` early-returns false when the flag is unset, so the signal self-disables on silent realms while preserving the v2.7.0 / v2.8.0 behaviour for any realm where the pet does broadcast normally. Movement-time stuck detection (180 s threshold) remains the catch-all primary signal.
+- **Companion display-name input removed from Scavenger Settings.** The v2.9.0 `Loot pet` / `Vendor pet` text inputs were unreliable on PE-ElvUI (clicks didn't always reach the EditBox). The `DB.scavengerName` / `DB.merchantName` fields and the `EC_compCache.refreshNames` mechanism still exist as a power-user override (`/run EbonClearanceDB.merchantName = "..."`) and the spell-ID 600126 cold-cache fallback in `FindGoblinMerchantIndex` still resolves the merchant slot. A one-time migration (`DB._v210NameReset`) detects clearly-broken values from the v2.9.0 UI session - names that don't contain the expected substring (`"scavenger"` / `"merchant"`, case-insensitive) - and resets them to defaults. A chat notice surfaces at PLAYER_LOGIN when the migration triggers so the user understands what happened.
+- **Brand-colour pass.** The addon name now reads in the same `66ccff` light blue everywhere it appears: AddOns list / Interface Options sidebar (`.toc` Title), bag-tooltip annotation prefix `[EC]`, bag-item Alt+Right-Click context menu title, and chat prefix `[EbonClearance]` in every `PrintNice` line. The version bracket `[vX.Y.Z]` in the title now uses `FFFF00` yellow. Pre-v2.10.0 used three different blues (`4db8ff` on the title and tooltip, `7fbfff` on the chat prefix) and a green version bracket; the new palette is internally consistent and matches the cross-addon visual signature shared with the other Ebonhold-suite addons. Body colours on individual chat lines (red for delete, green for sell, yellow for protected) are unchanged.
+- **Polish: bind-filter dropdowns aligned across rarity rows.** Each rarity row's checkbox, label, "Bind:" label, and dropdown now share a single column anchor (the threshold description) instead of cascading off the previous row's dropdown. Eliminates the staircase the dropdowns produced after their initial introduction.
+- **Polish: scroll-bar arrows aligned with the panel frame on scroll-wrapped panels.** The Merchant Settings and Scavenger Settings panels' scroll up / down arrows now sit at the visible top and bottom edges of the panel instead of floating 4 px / 24 px above where they should be. The previous layout reserved 30 px at the bottom for the OK/Cancel button strip; that reserve is now 6 px (covered instead by the existing 24 px content-padding of `EC_FitScrollContent`), and the scrollbar's TOP anchor was nudged 4 px further down to match.
+
+### v2.9.2
+
+- **Smart Alt+Right-Click bag-context menu.** Items with no vendor value (a cache-known `sellPrice` of 0 or nil) now collapse the popup to just the actionable choices: `Add to Deletion List` and `Cancel`. The Whitelist (Character / Account), Blacklist, and `Sell Now` rows are hidden because they are no-ops on unsellable items - the auto-rules already ignore items with no sell price, and no vendor will buy them. Items already on a list still expose a `Remove from X` row regardless of vendor value, so users can clean up stale list entries (e.g. a hand-added whitelist entry that turned out to be unsellable). Cross-list conflict greying remains as before for items the user is allowed to add. The tooltip annotation that explains "Whitelisted - No Vendor Price (cannot sell)" stays as the canonical hover-time indicator. Cache-miss fallback (`GetItemInfo` returns nil) shows every row - we don't filter when we don't know.
+- **Fix: false-positive "Scavenger went quiet during looting" loop while crafting.** The loot-silence stuck signal counted every `LOOT_CLOSED` event into its 60 s ring, but the Scavenger only chats on corpse loots. Disenchanting, milling, prospecting, lockpicking, opening engineered containers, and fishing all fire `LOOT_CLOSED` without producing Scavenger speech, so a player crafting in town would dismiss-and-resummon the pet on a near-loop. v2.9.2 tracks the player's `UNIT_SPELLCAST_SUCCEEDED` for the known loot-generating profession spells (`Disenchant`, `Milling`, `Prospecting`, `Pick Lock`, `Opening`); a `LOOT_CLOSED` arriving inside 3 s of one of those casts is excluded from the ring. Fishing loots are excluded via `IsFishingLoot()`. Combat rotations, mounts, food, and other casts don't update the timestamp, so legitimate corpse-loot detection is unaffected.
+
+### v2.9.1
+
+- **Fix: in-game version display now matches the .toc on every release.** The CI's existing sed rule for the Lua source only matched strings prefixed with the addon name, so the literal `local ADDON_VERSION = "v2.5.0"` was never rewritten. `EC_GetVersion()` preferred that literal over the .toc value whenever it matched `^v%d+%.%d+%.%d+`, so the settings panel header, bug-report builder, and any other surface routed through `EC_GetVersion` displayed v2.5.0 on every release since v2.5. v2.9.1 swaps both `EbonClearance.lua` and `EbonClearance.toc` to the `@VERSION@` placeholder convention so the existing `s/@VERSION@/$VERSION/g` workflow rule rewrites both files in a single pass. Dev checkouts keep the placeholder; `EC_GetVersion`'s match check fails and the function falls through to `GetAddOnMetadata`, which returns the .toc's last-shipped tag. Pre-v2.9.1 builds remain stuck at v2.5.0; from v2.9.1 onward every release will display the correct version.
+
+### v2.9.0
+
+- **New: editable Scavenger and Goblin Merchant display names.** `Loot pet` and `Vendor pet` text inputs on the Scavenger Settings panel write to `DB.scavengerName` and `DB.merchantName`. Defaults are the enUS strings the addon shipped with, so existing users see no change; users on a renamed or localised realm can drive the cycle without forking the addon. The spell-ID 600126 fallback in `FindGoblinMerchantIndex` still resolves the merchant slot for users who clear or mistype the merchant name. *(The text inputs were removed in v2.10.0 after PE-ElvUI clickability issues. The DB fields and underlying mechanism remain as a power-user override via `/run`.)*
+- **New: companion-ID cache for stuck-detection and summon paths.** Both the Scavenger and the Goblin Merchant now resolve via creature ID once their slot is known, falling back to a name match (and re-cache) only on the first lookup of a session or after `EC_compCache.refreshNames` wipes the cache. Companion lookup is now a single numeric compare per slot in the steady state.
+- **New: manual-sell attribution.** Right-click selling at any merchant now updates `DB.totalCopper`, `DB.totalItemsSold`, and `DB.soldItemCounts` the same way the addon-driven worker queue does. Bag contents are snapshotted at MERCHANT_SHOW; a `hooksecurefunc("UseContainerItem", ...)` callback reads the snapshot post-call to identify what just left the slot. Worker-path sells are excluded from the hook via an in-flight flag so they don't double-count.
+- **New: optional guild-bank repair.** A second checkbox under the existing Repair Gear toggle on the Merchant Settings panel routes auto-repair through `RepairAllItems(1)` when the player is in a guild, the merchant supports guild-bank repair, and the bank can fund the full repair cost. Any miss in the guild chain falls through to the existing personal-gold branch, so toggling this on is safe on alts that aren't in a guild. New field: `DB.repairUseGuildBank`. Default off.
+- **Restored: timing-based user-dismiss-vs-leash classifier.** When the Scavenger transitions out -> not-out without our own dismiss flag set, and the transition lands within 5 seconds of our last summon, we now classify it as "the user clicked the portrait off" and suppress recovery for 30 seconds. Range-leash transitions take longer to surface, so the timing distinguishes cleanly without the false positives that made v2.6.1 remove the previous speed-based classifier. The 30-second grace ends naturally; manual `/ec` summons bypass it.
+- **Cheaper bubble-killer OnUpdate.** The greedy-speech tracker now timestamps each line and prunes entries older than 8 seconds on every tick; the WorldFrame-children walk runs at 200 ms intervals (was 50 ms) and short-circuits as soon as the tracker is empty. Net effect: the OnUpdate body returns to its constant-time idle path within a couple of ticks of the Scavenger going quiet, instead of indefinitely.
+- **Fix: bag-full cycle now flags its own Scavenger dismiss.** `EC_HandleBagFullForCycle` was the only addon-driven dismiss site that didn't set `EC_addonDismissed = true`. The new dismiss-vs-leash classifier saw the addon-driven Scav→Goblin transition with the flag still false and, if a recent stuck-recovery summon had landed within the 5 s window, mis-classified it as a manual portrait click. The 30 s grace it stamped then blocked `EC_TryResummonScavenger` and starved the post-merchant restore during heavy combat. The flag now correctly tracks every cycle dismiss.
+- **Fix: dismiss-vs-leash classifier no longer re-fires on its own retries.** `EC_TryResummonScavenger` now waits 2 s after each `CallCompanion` before issuing another. The server takes ~1-2 s to flip the companion's `summoned` flag to true; the previous behaviour was for the 1 s pet-tick (fast cadence while `EC_addonDismissed = true`) to fire a redundant second `CallCompanion` plus chat print before the confirmation transition landed. If the call was actually rejected, the retry resumes after the wait.
+- **Fix: Scavenger recovery now prints in chat.** `EC_TryResummonScavenger` was silent. The bag-full → Goblin Merchant chat lines were left dangling without a matching close-out when the Scav came back via the busy-gated retry, the user-Escape mid-sell path, or the stuck-detection re-summon. Adds a single `Greedy Scavenger resummoned.` line on a successful retry. Manual `/ec` summons and the FinishRun success path stay silent (the latter already prints `Vendoring complete!`).
+- **Fix: name-input fields on Scavenger Settings are now clickable.** The `InputBoxTemplate` Left/Middle/Right backdrop textures were intercepting mouse events on the new pet-name inputs. Fixed by routing through the existing `StyleInputBox` helper (which raises the EditBox's frame level above its own backdrop), the same path every other input field on every other panel uses.
+
+### v2.8.0
+
+- **New: Purple (Epic) row on the Merchant Settings quality threshold.** The per-rarity quality threshold now offers four rows instead of three (White / Green / Blue / Purple), matching the in-game weapon and armour quality progression. Same `enabled` checkbox plus `max iLvl` numeric input as the other rows. Same strict-mode iLvl filter rule applies (cap > 0 only sells equippable items with a visible iLvl on the tooltip). Default off so existing users keep their current behaviour; opt-in per rarity. The new field lives at `DB.qualityRules[4]`. Useful for selling off lower-tier epics to make room for higher-iLvl drops without hand-whitelisting every item ID.
+- **Fix: Scavenger and Goblin Merchant re-summons no longer get silently swallowed by the spell system during heavy combat.** `CallCompanion` goes through WoW's normal cast pipeline, so issuing it while the player is mid-cast, mid-channel, or on the GCD from an instant-cast ability gets rejected by the server without raising any error. Stationary intense farming (mashing buttons at a tap point) was the worst case: every retry tick happened to land inside a cast slot, so the Scavenger could end up dismissed for the rest of a session. v2.8.0 adds a new `EC_IsPlayerBusy()` gate that defers the call until the player is clear of casting, channeling, and movement. Same gate applied to the bag-full Goblin Merchant summon path.
+- **Fix: Goblin Merchant retry budget raised from 1 attempt to 3.** The previous one-shot retry was sized for the post-dismiss companion-GCD overlap (lag) case. Under heavy combat the bare GCD from instant-cast rotations can swallow several attempts in a row before one lands; 3 attempts (re-armed through the busy gate, so they only fire during clear windows) covers that without giving up early.
+- **Faster retry cadence while waiting to re-summon.** When `EC_addonDismissed = true` (i.e. the addon is actively trying to bring the pet back), the pet-check tick now samples at 1 second instead of 5 seconds. Catches cast-clear windows much faster during heavy combat. Falls back to the 5-second baseline once the pet is back.
+- **Fix: post-merchant Scavenger restore now respects the cast-busy gate too.** The auto-loot cycle's "merchant gone, bring the Scavenger back" path goes through `SummonGreedyScavenger`, which is a separate code path from the tick-driven retry. The cast-busy gate was only added to the tick path in the initial v2.7.1 work; under heavy combat the post-merchant restore could still fire `CallCompanion` into a cast slot, get silently rejected, and then unconditionally mark the pet as restored - leaving the Scavenger gone for the rest of the session. The helper now defers via the same gate and marks `EC_addonDismissed = true` so the tick retry picks it up the next time the player has a clear cast/movement window.
+- **Fix: leftover Goblin Merchant blocked the Scavenger from coming back.** The Goblin Merchant doesn't auto-dismiss when the merchant window closes - it lingers in the CRITTER slot for some time. The post-merchant Scavenger restore path correctly recognised that the slot was occupied, but its `if anyPetOut then return end` guard was designed to respect the user's manually-summoned third-party companions (bank mule, mailbox) - it didn't distinguish those from our own leftover goblin from the bag-full cycle. Result: the resummon path bailed forever and the Scavenger never came back, no matter how long the player waited. The pet-check now tracks whether the in-slot pet is specifically the goblin (matched by `TARGET_NAME` or `GOBLIN_MERCHANT_SPELL_ID`); if so, it dismisses it and proceeds with the Scavenger summon during the next clear cast/movement window. Genuine user companions still get the respect they had before.
+- **Fix: false-positive "Scavenger went quiet during looting" loop.** v2.7.0's loot-silence stuck signal correctly noticed when 2+ loots happened inside 60 s without the Scavenger speaking, but the speech tracker was too strict: it required an exact `author == "Greedy Scavenger"` match plus a `says|yells|whispers` pattern in the message body. On Project Ebonhold the pet's chat author can come through as a customised name (e.g. `Serv's Scavenger`) and emote-style messages don't carry the verb pattern - both bypassed the tracker even though the pet was visibly speaking and looting. Result: every two loots fired the dismiss-and-resummon, looped indefinitely. Speech tracking now accepts any chat line where the author OR the body contains the substring `scavenger` (case-insensitive). As a defensive belt-and-braces, the silence baseline is also refreshed every time the pet transitions back to the summoned state, so a freshly-summoned pet can't be falsely accused of having been silent the whole time.
+- **Fix: tooltip annotation now reflects what will actually be sold.** Items on the whitelist that the addon can't actually vendor used to be annotated `Will Sell - Whitelisted` in green - the same wording as a normal whitelisted item - so users would see the green "will sell" line at the bag tooltip and then be surprised when the Goblin Merchant skipped them. Two cases are now called out explicitly in warning-yellow: `Whitelisted - No Vendor Price (cannot sell)` for items with `sellPrice = 0` (common with custom Project Ebonhold drops), and `Whitelisted - Currently Equipped (cannot sell)` when the item is on the whitelist but the player has it equipped. The discrepancy with the merchant cycle is now visible at the point of decision instead of "why didn't this sell?" at the vendor.
+
+### v2.7.0
+
+- **Smarter Scavenger stuck detection** - Adds a second stuck signal alongside the existing 180s movement-time threshold. The addon now tracks Scavenger speech timestamps and player loot events, and the Scavenger is dismissed-and-resummoned if you've looted at least 2 corpses inside 60s without hearing it speak. Catches the kills-and-loots-in-place case (AOE channels, melee in one spot, tight kiting) that movement-time alone misses because the player isn't moving much. Both signals still go through the same flag-based gate, so manual portrait dismisses are honoured exactly as before.
+- **Stuck-resummon now talks to you** - The previous code paths dismissed and resummoned the Scavenger silently; you only knew it had happened if you noticed the pet had a different position. EbonClearance now prints which signal fired ("Scavenger fell behind." or "Scavenger went quiet during looting.") and a hint that the actual resummon waits for you to stop moving (because Project Ebonhold's CRITTER summon won't engage follow-AI on a moving player).
+- **Cross-list conflict guard at add time** - Adding an item to one list while it sits on a conflicting one is now refused at input time with a clear message. Same-intent scopes (per-character whitelist + account whitelist, both "keep") still work as before; cross-intent (keep vs sell vs delete) is what's refused. Bulk paths (substring match, scan-by-quality) skip conflicting items and report the skipped count alongside the added count. The `/ec clean` post-hoc cleaner is unchanged and remains as a safety net for legacy data and imports.
+- **Smart bag-context menu** - Alt+Right-Click on a bag item now greys out list rows that would create a conflict, mirroring how Sell Now disables itself when no merchant is open. The highlighted "Remove from X" row tells you which list currently holds the item, so the disabled rows don't need to repeat it.
+- **Fix: PLAYER_LOGIN welcome message routes through `PrintNice`** - The login greeting was the last direct `DEFAULT_CHAT_FRAME:AddMessage` call outside `PrintNice` itself, violating the documented "prefix and colour are owned by `PrintNice`" rule. Drops the redundant "EbonClearance Enabled" text since `PrintNice` already prepends `[EbonClearance]`.
+
+### v2.6.1
+
+- **Fix: Scavenger no longer permanently disables itself after a stationary despawn.** v2.4.0 introduced a heuristic (`EC_ClassifyScavengerTransition`) that watched the Scavenger's out-state and used the player's instantaneous speed as a proxy for "manual portrait dismiss vs. game-leash dismiss" - moving = re-summon, stationary = treat as manual and never re-summon again. The premise was wrong: server-side companion timers, brief disconnects, loading screens, and phasing all cause the pet to despawn while the player happens to be standing still. Each of those latched a permanent "user dismissed" flag that nothing short of an explicit `/ec` re-summon would clear, and a knock-on effect was that the bag-full Goblin Merchant summon could fail with `Goblin Merchant failed to summon. Resuming looting.` The classifier and its companion `EC_userDismissed` flag are now removed entirely. The simpler rule: the addon only auto-resummons the Scavenger if **it** dismissed it (mount cycle or stuck-detection). Manual portrait dismisses, server despawns, and disconnects all leave the pet alone until the user re-summons -- the v2.3.x behaviour, before the broken classifier was added.
+- **Fix: stuck-detection threshold raised from 20 s to 180 s of cumulative player movement.** The 20 s value fired roughly every 60-90 s of normal questing, producing visible "the Scavenger just disappeared" glitches even when the pet wasn't actually stuck. 180 s leaves the pet alone through normal kill-loot-move questing cadence and only intervenes when the player has been moving for a sustained period that's almost certainly outpaced the leash.
+- **Fix: stuck-detection re-summon defers until the player stops moving, and retries until it lands.** Two related issues on Project Ebonhold's CRITTER summon path: (a) `CallCompanion` issued while the player is moving spawns the Scavenger but its follow AI never engages -- the critter sits where it was summoned as a zombie that never catches up; (b) the previous addon code cleared `EC_addonDismissed` immediately on the call, so a silently-rejected summon left the addon thinking the pet had been restored when it actually hadn't, leaving the Scavenger gone until a mount cycle or `/ec` summon brought it back. The re-summon path now (1) defers `CallCompanion` until the player is stationary, so the spawn lands cleanly and the pet starts following immediately, and (2) clears the dismiss flag only after the next 5 s tick *observes* the pet actually summoned -- a rejected or deferred call simply re-fires on the next tick until one confirms.
+- **Fix: one-shot retry on Goblin Merchant summon under lag.** `EC_TickGoblinTarget`'s 2 s post-summon verify now retries `CallCompanion` once if the first attempt is observed to have missed (companion GCD overlap from the preceding dismiss is the usual cause). Previously the verify would give up immediately and reset to looting; now the failure message only fires if both attempts miss.
+
+### v2.6.0
+
+- **Responsive Interface Options layouts** - The Scavenger Settings and Merchant Settings panels are now wrapped in a vertical scroll frame so every widget stays reachable at the default 3.3.5a container width (previously the bottom of those panels was being clipped under the OK/Cancel button strip on narrow setups). The scroll bar hides automatically when content fits, so wider configurations look unchanged.
+- **Fix: Whitelist Character and Whitelist Account list overflow** - Both list UIs now auto-fill the remaining panel height (anchored `BOTTOMRIGHT` to the panel) instead of using a fixed 290 px height that could clip the bottom row at narrow widths.
+- **Fix: "Add from bags:" buttons overlapping description on Whitelist panels** - The scan-by-quality row is now cascade-anchored to the description's `BOTTOMLEFT`, so it stays below the description regardless of how many lines it wraps to. Same treatment applied to the Merchant Quality Threshold block.
+- **Fix: Orphan scroll arrows on short lists** - On the Whitelist, Account Whitelist, Blacklist, Deletion, Character Settings, and Profiles panels, when the list had fewer items than the visible area the scroll-bar arrows were rendering as floating icons at the right edge. A new `OnScrollRangeChanged` hook now hides the scroll bar (arrows + thumb) when content fits.
+- **Tightened explanatory text** - The Merchant Quality Threshold description, the auto-loot cycle note on Scavenger Settings, and a couple of redundant cross-cutting lines were shortened so panels read more cleanly at narrow widths. Generic information that isn't context-specific to a sub-panel (such as "grey junk is sold automatically") is consolidated on the Main panel.
+- **Profiles row labels shortened** - Saved profile rows now read `(N wl, N bl)` instead of `(N whitelist, N blacklist)`, fitting cleanly when all three Load / Clear / Delete buttons are visible without truncating the profile name.
+- **Polish: Summon delay slider format** - The slider now reads `0.0s ... 3.0s` (was `0.000s ... 3.000s`). Three decimals were noise on a 0.1-step slider. Vendoring Speed slider unchanged (its 0.005 step warrants the precision).
+- **Copy-detection fingerprint and watermark** - EbonClearance now writes a `__EbonClearance_watermark` global at load (visible to `/run` introspection) and appends a `;fp=<6 hex>` fingerprint suffix to every export string. The fingerprint is back-compat: imports tolerate strings with or without the suffix, and there is no warning on missing or corrupted fingerprints (hand-edited strings keep working). The mechanism's purpose is mechanical detection of verbatim copies in derivative addons. See [docs/ADDON_GUIDE.md](docs/ADDON_GUIDE.md) "Fingerprint and watermark" for the convention.
+- **NOTICE.md: prior-art acknowledgement** - New file at the repo root documents which structural patterns in this addon (the source-available licence shape, the `__<addon>_origin` / `__<addon>_author` provenance globals form) are adopted from conventions already present in the 3.3.5a addon ecosystem rather than originated here. Read NOTICE.md before drawing conclusions about influence in either direction.
+- **Internal: comment audit on the provenance globals; LICENSE section 2(d) preservation list expanded** to include `__EbonClearance_watermark`. Historical changelog text generalised to remove a stale named cross-reference.
+
+### v2.5.0
+
+- **Per-rarity quality threshold with optional max item level** - The single "Sell items up to quality" dropdown is replaced with three independent per-rarity rows (White, Green, Blue) on the Merchant Settings panel. Each rarity has its own checkbox and an optional max iLvl input. Setting iLvl to `0` means no cap (sells every item of that rarity, including cloth and trade goods); setting it above `0` is a strict filter that only sells **equippable items** at or below the cap - trade goods, reagents, consumables, and anything without "Item Level" on its tooltip are protected. This means setting White cap = 100 won't accidentally vendor Runecloth, even though `GetItemInfo` reports an internal itemLevel of 50 for it. The mental model is "the cap only filters items I can SEE the iLvl of". This makes it possible to say things like "sell all whites and all greens up to iLvl 150 but no blues", or "sell every equippable under iLvl 170 regardless of rarity", without surprises. Default all off; existing users get a one-time migration from the old cumulative dropdown so their previous behaviour is preserved. New saved variable `DB.qualityRules` holds the per-rarity state. The legacy `DB.whitelistMinQuality` / `DB.whitelistQualityEnabled` keys remain for one release in case of rollback.
+- **Tooltip annotation shows iLvl-cap state** - Items either show `[EC] Will Sell - Quality Threshold` (green) when they qualify, or one of two `[EC] Protected -` (warning yellow) lines when the cap protects them: above max iLvl, or no iLvl on item with cap active. Makes the cap visible at the point of decision rather than abstract on the settings panel.
+- **Whitelist still wins over the cap** - Items on your whitelist sell regardless of any iLvl cap. The cap only acts on the quality-threshold pass.
+- **Smart Alt+Right-Click context menu** - Each list row now toggles between "Add to ..." (white) and "Remove from ..." (orange) based on the item's current membership. If the item is already on the Whitelist (Character), the row reads "Remove from Whitelist (Character)" in orange and clicking it removes the item; otherwise it reads "Add to Whitelist (Character)" in white. Each row checks its own list independently, so an item on the Account whitelist + Blacklist shows two orange "Remove from ..." rows and two white "Add to ..." rows.
+- **Welcome page text refresh** - The opening description on the main `/ec` panel was stale (predated the account whitelist, blacklist, and Alt+Right-Click menu). Rewritten to mention the per-character/account whitelist split, the blacklist, the per-rarity quality threshold with iLvl caps, and a discoverability tip for the bag context menu.
+
+### v2.4.0
+
+- **Performance/maintainability pass and two Scavenger lifecycle fixes.** The pet stuck-detection no longer relies on the `UnitPosition` distance check (which doesn't exist on stock 3.3.5a and silently no-oped); it now uses a movement-time accumulator that re-summons the Scavenger when it has been out and stationary too long. The manual-dismiss-respect logic now survives a mount/dismount cycle (was previously losing the `EC_addonDismissed` intent across `UNIT_AURA` mount transitions). Plus a code-quality sweep across the file. See the v2.4.0 commit and PR for full details.
+
+### v2.3.0
+
+- **Auto-open lootable containers** - New opt-in toggle on the Scavenger Settings panel. When enabled, EbonClearance reacts to bag changes and automatically opens any container in your bags that shows the standard "Right Click to Open" tooltip line - the gift bags, treasure pouches, and freebie pouches that drop from quests, mailbox, or as world-drop loot. Lockboxes that need a key or lockpick are skipped. Combat-paused. Containers are opened in sequence with a small inter-item delay so the previous open isn't interrupted. New saved variable `DB.autoOpenContainers` defaults to `false`; turn it on under Scavenger Settings → "Auto-open lootable containers from your bags". `/ec bugreport` now includes the toggle state.
+- **Right-click bag-item context menu** - Alt+Right-Click any item in your bags to open an EbonClearance popup: Add to Whitelist (Character / Account), Add to Blacklist, Add to Deletion List, or Sell Now (only enabled when a merchant window is open). No more trip to the settings panel for one-off list edits. The default right-click-to-use behaviour is unchanged - only Alt+Right-Click triggers the menu. Closes on Escape or Cancel.
+- **Discoverability hints** - A subtle grey "Alt+Right-Click for EbonClearance menu" line is appended to every bag-item tooltip, and a yellow "Tip:" line at the bottom of Scavenger Settings clusters both v2.3.0 bag features for users browsing the panel.
+- **Tooltip annotation now recognises the account whitelist** - The existing `[EC] Will Sell - Whitelisted` line previously only checked the per-character whitelist; account-whitelist items got no annotation. Both scopes are now consulted. Carryover gap from v2.1.0; folded in here while we were touching the tooltip code.
+
+### v2.2.1
+
+- **Fix: Goblin Merchant never summons after the BAG_UPDATE auto-cycle** - In v2.2.0 the new `EC_HandleBagFullForCycle` helper was placed above the `local` declarations of its `EC_summonGoblinPending` / `EC_summonGoblinTimer` flags. Lua compiled the writes inside the function as globals, so the OnUpdate consumer (which captured them as locals) never saw the trigger and the cycle hung in `WAITING_MERCHANT` with the Scavenger dismissed and no merchant summoned. The flags are now hoisted into a forward-declaration block above the helper. Same scoping trap that v2.0.13 fixed for `STATE` / `running`; same fix shape. Bonus: `_G.EC_summonGoblinPending` / `EC_summonGoblinTimer` are scrubbed at addon load so any orphan globals from a v2.2.0 session don't linger.
+
+### v2.2.0
+
+- **Event-driven bag detection** - The auto-loot cycle now reacts to `BAG_UPDATE` instead of a 5-second poll, so the Goblin Merchant is summoned within a tick of crossing the bag-full threshold rather than up to five seconds later. New helper `EC_HandleBagFullForCycle` is the only consumer; the pet stuck-detection and mount cooldown stay on the existing OnUpdate.
+- **Fast Mode toggle** - Optional checkbox on Merchant Settings. When enabled, pins the per-item vendor interval to the 0.05 s floor and doubles the per-run cap to 160 items. Roughly halves vendoring time on large inventories. Increases disconnect risk on unstable connections; opt-in only and reversible.
+- **Import / Export now supports the account whitelist** - New "Target list" radio at the top of the Import/Export panel. Pick **Character** or **Account**, then Export, Import (Merge) or Import (Replace) operates on that scope. The export string format is unchanged (`EC:<name>:<id1>,...`), so strings carry between scopes; the radio at import time decides where they land.
+- **Internal: `EC_EffectiveVendorInterval` / `EC_EffectiveMaxItemsPerRun`** - Tiny accessors so Fast Mode doesn't need to mutate the user's saved `vendorInterval` / `maxItemsPerRun` values.
+
+### v2.1.0
+
+- **Account-wide whitelist** - New panel `Whitelist - Account` storing items in a separate `EbonClearanceAccountDB` saved variable. Both whitelists are unioned at sell time so an item listed in either fires. The character panel was renamed `Whitelist - Character` for symmetry, with the same scan-by-quality buttons on both.
+- **Quality threshold moved to Merchant Settings** - The "Sell items by quality threshold" checkbox and the rarity dropdown now live alongside the other vendoring settings, freeing the Whitelist panel from clutter. Existing settings carry across automatically.
+- **`/ec clean` and `/ec clean apply`** - Report and (optionally) auto-resolve item IDs present in more than one of the whitelist / blacklist / delete-list. Precedence is blacklist > delete-list > whitelist.
+- **Add matching in bags** - Every list panel gets a text input that scans your bags for items whose name contains the typed substring and bulk-adds them. Useful for seasonal prefixes (e.g. `Tome of`).
+- **Key bindings** - Three bindable actions under the WoW Key Bindings menu: open/close settings, toggle enabled, force sell at current merchant. These sit alongside the existing target-Goblin-Merchant binding from v2.0.13.
+- **Confirmation popups on destructive actions** - Reset Lifetime Stats, Reset Session Stats, Delete Profile, and Clear Profile now ask before going through.
+- **Session stats inline with lifetime** - Each lifetime stat line shows its session delta in grey alongside it, with a separate Reset Session button next to Reset Lifetime. No extra vertical space; the main page no longer overflows.
+- **Panel-overflow fixes** - Reduced the default list-panel height so the bottom rows of large blacklist / delete-list / account-whitelist no longer fall outside the menu.
+- **Attribution and licence change** - Replaced the MIT licence with the EbonClearance Source-Available Attribution Licence (see [LICENSE](LICENSE)). Added the in-game byline on the main panel, an SPDX-style header at the top of the Lua source, and the `EBONCLEARANCE_IDENT` / `EBONCLEARANCE_AUTHOR` / `EBONCLEARANCE_ORIGIN` globals (plus two underscore-prefixed aliases). Use, modification and redistribution still permitted - rebranding without preserved attribution is not.
+
+### v2.0.13
+
+- **Fix: Auto-loot cycle and pet handling were silently broken** - Four `local` variables (`STATE`, `EC_lootCycleState`, `EC_addonDismissed`, `running`) were declared after the functions that captured them, so Lua 5.1 resolved the captures to globals instead of locals. State-machine writes in `SummonGreedyScavenger` and `DismissGreedyScavenger` leaked to `_G` and never reached the OnUpdate loop; the "skip pet checks while vendoring" guard also never fired. Auto-loot cycle transitions, mount handling, and pet stuck-detection now work as documented. The errors were hidden because `EC_Delay` wrapped its callbacks in `pcall` and discarded the error; delayed-callback errors now surface through `geterrorhandler()` so real bugs don't disappear.
+- **Fix: Delete-popup watcher ran every frame** - The hook that auto-confirms the delete-item dialog was ticking ~60 times per second for the entire session even when no deletion was pending. Gated on `pendingDelete` being set, plus a 0.1s accumulator.
+- **Fix: `UNIT_AURA` registered unfiltered** - Now uses `RegisterUnitEvent("UNIT_AURA", "player")` where supported, so the handler doesn't wake for every aura change on every unit in a raid.
+- **Feature: Tooltip annotations** - Hover any item in your bags (or a chat-linked item) and a `[EC]` line shows whether it's on your whitelist, blacklist, delete list, or matches the quality threshold. The line respects the addon-enabled state, so turning EbonClearance off via the minimap hides the annotations. Recipe tooltips that fire `OnTooltipSetItem` twice no longer show duplicate lines.
+- **Feature: Mouse-over sell preview on the minimap button** - Hovering the minimap button now shows `Sellable now: N items` and an estimated value, honouring your current merchant-mode and whitelist/quality-threshold/blacklist settings. Extracted `EC_IsSellable` so the preview and the vendor loop share one predicate.
+- **Feature: Optional LibDataBroker-1.0 launcher** - Users running Titan Panel, Bazooka, ChocolateBar, or similar data-broker displays get an EbonClearance entry with the same click and tooltip behaviour as the minimap button. No-op if LibStub or LDB isn't loaded - zero hard dependency.
+- **Feature: Target Goblin Merchant keybinding** - A new binding appears in ESC → Key Bindings → EbonClearance. Assign any key and press it to target the Goblin Merchant - works in and out of combat. When the auto-loot cycle summons the merchant, the chat line now reads "Goblin Merchant summoned - press `<your key>` or right-click to sell" so the binding is self-discovering.
+- **Internal: price-provider seam** - A new `EC_GetItemPrice` indirection sits between the vendor loop / preview and the raw `sellPrice * count` calculation. Future Auctionator-WotLK or Auctioneer probes can drop in here without touching callers.
+
+### v2.0.12
+
+- **Fix: Can't paste into the Import field** - The Import/Export panel's paste box had no clickable area when empty, so pasting an exported string was impossible unless you typed a character first. Both the export and import boxes now have an explicit height.
+- **Fix: Import error text overlapping the grey explanation** - Clicking Import with an empty box showed a red "empty string" warning that overlapped the grey help text below it. The help text is now anchored beneath the status line and flows correctly even when the error wraps to two lines.
+- **Fix: Misleading Scavenger Settings description** - The auto-loot cycle note claimed the Goblin Merchant was "targeted for you" when the bag threshold triggers. The addon does not target anything; it only dismisses the Scavenger and summons the Goblin Merchant. The text now describes what actually happens.
+- **Fix: Blacklist "Protected Items" label overlap** - On the Blacklist (Do Not Sell) panel, the "Protected Items" title was sitting too close to the line above it, causing a slight overlap when the description wrapped. Hints are now anchored relative to the description so the layout stays clean regardless of text wrapping.
+- **Internal cleanup** - State transitions now use named constants instead of string literals so typos fail loudly rather than silently. Hot WoW API calls are cached as local upvalues. The main options panel's build step is factored out of its OnShow. The two Import button handlers were deduplicated into a single helper. A new `PrintNicef` helper replaces most `PrintNice(string.format(...))` call sites. No behavioural changes.
+
+### v2.0.11
+
+- **Fix: Disconnect when selling many items** - The vendor interval minimum was 0.005s which allowed packet flooding at high speeds. Raised minimum to 0.05s and default to 0.1s. Existing settings below the new floor are auto-corrected on load. Slider range updated to 0.05s-0.50s.
+
+### v2.0.10
+
+- **Blacklist (do not sell)** - New panel to protect specific items from ever being sold, overriding the whitelist and quality threshold. Useful for auction house items like Traveler's Bags. Blacklists are saved and loaded with profiles.
+- **Scan bags to whitelist** - Three colour-coded buttons (White, Green, Blue) on the Whitelist panel to bulk-add items from your bags by quality. Items with no vendor value are automatically skipped.
+- **Distance-based stuck detection** - The Scavenger is now re-summoned if it gets stuck more than 5 yards from the player, not just when it fully despawns.
+- **Recursive batch selling** - When selling more than 80 items, the addon now automatically continues in batches until everything is sold, with a single summary at the end.
+- **8-second merchant reminder** - If the Goblin Merchant is summoned but you haven't opened the vendor window within 8 seconds, a reminder is printed.
+- **Unsellable item protection** - Items with no vendor value (quest items, etc.) are now blocked from the sell queue and from the scan-bags buttons. This fixes an infinite loop where unsellable whitelist items caused batch selling to repeat forever.
+- **Batch selling delay** - Re-scan now waits 1 second between batches so the server has time to process sold items.
+- **Code cleanup** - Removed 4 dead functions, renamed all legacy EHS_ prefixes to EC_ for consistency.
+- **Menu reordering** - Settings panels reordered: Character, Scavenger, Merchant, Profiles, Import/Export, Deletion List, Blacklist - Keep, Whitelist - Sell.
+- **Profile counts** - Profiles now show whitelist and blacklist item counts separately.
+
+### v2.0.9
+
+- **Fix: Auto-loot cycle not summoning Goblin Merchant** - The cycle would detect full bags but fail to summon the merchant. Fixed by using `DismissCompanion("CRITTER")` instead of `CallCompanion` for dismissing pets, matching the established 3.3.5a CRITTER-companion dismiss pattern.
+- **Fix: Auto-loot cycle only running once** - After selling, the cycle state got stuck at "selling" and never restarted. State transitions are now properly reset in both `FinishRun` and `MERCHANT_CLOSED`.
+- **Fix: Mount cancelled by Scavenger re-summon** - When mounting, the stuck detection would re-summon the Scavenger mid-cast, cancelling the mount. A 10-second cooldown now prevents re-summon after a mount dismiss. Also fixed a race condition where a delayed summon from dismounting could fire after remounting.
+- **Fix: Manual unsummon respected** - If the user manually unsummons the Scavenger, the addon no longer re-summons it. Only re-summons when the addon itself caused the dismiss (mount, cycle, etc).
+- **Fix: Pet summoning when addon is disabled** - All pet automation (stuck detection, mount detection, auto-loot cycle) now respects the addon enabled state.
+- **Fix: Scavenger replacing other companions** - The stuck detection no longer re-summons the Scavenger when another companion is active (bank mule, mailbox, etc).
+- **Fix: Forward-reference errors** - Moved `EC_GetFreeBagSlots` and Goblin Merchant summon timers to avoid nil function errors at runtime.
+- **Goblin Merchant matching** - Now matches by spell ID (600126) as well as name, for more reliable summoning.
+
+### v2.0.8
+
+- **Fix: Pet summoning when addon is disabled** - The Greedy Scavenger would auto-summon (and replace the Goblin Merchant) even when the addon was disabled via the minimap button. All pet automation now respects the enabled state.
+- **Fix: Scavenger replacing other companions** - The stuck detection would re-summon the Greedy Scavenger when the user had a different companion active (bank mule, mailbox, etc). It now only re-summons if no companion is out at all.
+
+### v2.0.7
+
+- **Auto-loot cycle** - New opt-in feature in Scavenger Settings. Continuously loops: loot with the Greedy Scavenger, sell when bags are full, then loot again. When your free bag slots hit the threshold, the pet is dismissed and the Goblin Merchant is summoned. Just right-click the merchant to sell and the cycle continues. Enabling the cycle automatically turns on pet summoning, and turning off summoning disables the cycle.
+- **Slider format fix** - The bag threshold slider now shows whole numbers instead of seconds.
+- **Scavenger Settings layout** - Fixed the description text overlapping the summon checkbox. Added a grey hint explaining that right-clicking the merchant is the only player input needed.
+- **Bug report command** - `/ec bugreport` opens a window with a full diagnostic snapshot of your settings, profiles, stats and bag space. Copy and paste it into a GitHub issue.
+
+### v2.0.6
+
+- **Mount detection** - Greedy Scavenger is automatically dismissed when you mount up and re-summoned when you dismount.
+- **Bag slot indicator** - The minimap button tooltip now shows your free bag slots, colour-coded green, yellow or red.
+- **Pet stuck detection** - If the Greedy Scavenger despawns or gets stuck, it's automatically re-summoned every 5 seconds.
+- **Sell cap** - Vendoring is now capped at 80 items per merchant visit to prevent client disconnects. Any leftover items are picked up on the next visit.
+- **Duplicate function cleanup** - Removed a duplicate pet summon function that was left over from earlier development.
+
+### v2.0.5
+
+- **Most Sold Item display fixed** - Removed the item ID from the stats display so it just shows the item name and count, avoiding confusion with quantities.
+- **Stat accuracy improved** - Sell and delete counts now only increment after the action succeeds, not before. Delete counts only tick up if the item was actually picked up and destroyed.
+- **Buyback note** - Added a note to the stats panel that counts don't account for items bought back from a merchant.
+- **Version header from TOC** - The settings panel header now pulls the version from the TOC file instead of being hardcoded.
+- **Duplicate grey junk text trimmed** - The "grey items are always sold" message was repeated three times on the Whitelist Settings page. Now it's mentioned once at the top.
+- **Debug typo fixed** - Removed a stray bracket from the bag scan debug output.
+
+### v2.0.4
+
+- **Search Clear button removed** - The Clear button next to the search filter in Whitelist Settings has been removed to avoid confusion with the profile Clear button. To clear a whitelist, use the Clear button on the Profiles panel instead.
+- **Profiles panel description** - Added a reminder that the Default profile is always empty, so users know to pick a name before saving.
+- **UI fixes** - Fixed the Profiles panel description overlapping the active profile label. Added EbonholdStuff comparison table and humanised the README.
+
+### v2.0.3
+
+- **Equipped item protection** - Every item is now checked before being sold or deleted, so your equipped gear can never be touched. Bag slots are also verified in case items shift around mid-vendoring.
+- **Default profile locked to empty** - The Default profile is always empty and can't be saved to, deleted or renamed. New characters start fresh instead of picking up another character's whitelist.
+- **Clear button on profiles** - Each profile in the Saved Profiles list now has a Clear button to empty it out without deleting it.
+- **Quality dropdown capped at Blue** - The sell-by-quality threshold tops out at Blue (Rare) now. Epic has been removed. If you had it set to Epic, it's been bumped down to Blue automatically.
+- **UI overlap fixes** - Sorted the "Allowed Characters" label overlapping the checkbox in Character Settings, and the "List name" sitting on top of the description in Import/Export.
+
+### v2.0.2
+
+- Fixed misleading whitelist description across UI and README.
+
+### v2.0.0
+
+- First release. Whitelist-based auto-vendoring, item deletion, Greedy Scavenger management, whitelist profiles, import/export, auto-repair and session stats.
+

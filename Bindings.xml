@@ -1,0 +1,18 @@
+<Bindings>
+    <Binding name="CLICK WoWClearanceProcessCastBtn:LeftButton" header="WOWCLEARANCE" category="WoWClearance"/>
+    <Binding name="WOWCLEARANCE_TOGGLE_SETTINGS" category="WoWClearance">
+        WoWClearance_ToggleSettings()
+    </Binding>
+    <Binding name="WOWCLEARANCE_TOGGLE_ENABLED" category="WoWClearance">
+        WoWClearance_ToggleEnabled()
+    </Binding>
+    <Binding name="WOWCLEARANCE_FORCE_SELL" category="WoWClearance">
+        WoWClearance_ForceSell()
+    </Binding>
+    <Binding name="WOWCLEARANCE_TOGGLE_LOOTLOG" category="WoWClearance">
+        WoWClearance_ToggleLootLog()
+    </Binding>
+    <Binding name="WOWCLEARANCE_DELETE_NEXT" category="WoWClearance">
+        WoWClearance_DeleteNext()
+    </Binding>
+</Bindings>

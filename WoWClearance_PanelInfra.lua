@@ -1,0 +1,423 @@
+-- WoWClearance_PanelInfra - panel-width registry + reactivity layer.
+-- Author:  Serv
+-- Source:  https://github.com/powerfulqa/WoWClearance
+-- License: see LICENSE; attribution preservation is required.
+--
+-- Stage 8e-ix-b of the multi-stage file split (docs/CODE_REVIEW.md item 4).
+-- The panel-infrastructure foundation: every other Interface Options
+-- panel in the addon (Main, Merchant, Protection, Item
+-- Highlighting, the Sell / Account / Keep / Delete list family,
+-- Profiles, Import/Export, Process Bags) builds widgets through
+-- these helpers and relies on the reactive layout registry to track
+-- Interface Options container resize.
+--
+-- Moved into this file:
+--   * local WC_PANEL_WIDTH (mutable; the container's effective width
+--     minus a fixed 40 px margin; default fallback 440)
+--   * local function WC_UpdatePanelWidth (refreshes WC_PANEL_WIDTH
+--     from NS.OptionsHost():GetWidth())
+--   * NS.GetPanelWidth (getter closure; captures the upvalue)
+--   * WC_compCache.widthRegistry (state: { widgets = {}, scrollFits = {} })
+--   * WC_compCache.registerWidth / registerScrollFit / setPanelWidth /
+--     refreshLayouts (the 4 reactive-layout helpers)
+--   * local function WC_HookScrollbarAutoHide (scroll bar visibility
+--     based on content range)
+--   * local function WC_WrapPanelInScrollFrame (scroll-wraps a panel;
+--     returns the content frame)
+--   * local function WC_FitScrollContent (sizes scroll-content to fit
+--     the bottom-most widget)
+--   * WC_compCache.initPanel (the panel-OnShow preamble extractor)
+--
+-- Cross-file dependencies satisfied by NS:
+--   * NS.compCache (Core) - the WC_compCache table shared across files
+--   * NS.EnsureDB (Stage 8) - called at the top of initPanel
+--   * NS.compCache.registerScrollFit / refreshLayouts read each
+--     widget's stored x-offset / padding from internal tables - those
+--     tables are only mutated through the helpers in this file so
+--     no external API needed
+--
+-- The widget primitives (MakeHeader, MakeLabel, AddCheckbox, AddSlider,
+-- StyleInputBox, ColorTextByQuality) live in WoWClearance_PanelWidgets.lua
+-- (Stage 8e-ix-c); CreateListUI + the list-row factories in
+-- WoWClearance_ListWidget.lua (Stage 8e-ix-d).
+-- MakeLabel and CreateListUI reach WC_PANEL_WIDTH through
+-- NS.GetPanelWidth() at call time (not via upvalue, because the local
+-- now lives in this file's scope).
+
+local NS = select(2, ...)
+local WC_compCache = NS.compCache
+
+-- Options-panel host frame (port work item 5).
+--
+-- 3.3.5a parented every panel to InterfaceOptionsFramePanelContainer and
+-- measured its width. That frame does not exist on WoW: Forever; the modern
+-- equivalent is SettingsPanel.Container, measured 665px wide beside a 199px
+-- category list.
+--
+-- Resolved through a function rather than captured at file load: this file
+-- loads during ADDON_LOADED, and SettingsPanel is a Blizzard frame that may
+-- not be constructed yet. Every caller asks at call time. Returns UIParent as
+-- a last resort so a panel frame is never parented to nil (which would make
+-- CreateFrame throw and take out the rest of the file).
+-- v0.5.3: dual-hosted. When the standalone window is open it is the
+-- active host, so NS.GetPanelWidth and the reactive width registry measure
+-- IT rather than the Settings container - which is what lets the same panel
+-- files render correctly in either host without knowing which they are in.
+function NS.OptionsHost()
+    if NS.StandaloneHost then
+        local host = NS.StandaloneHost()
+        if host then
+            return host
+        end
+    end
+    return (SettingsPanel and SettingsPanel.Container) or UIParent
+end
+
+-- Options-category registry (port work item 5).
+--
+-- 3.3.5a: every panel frame carried `.name` (display) and `.parent` (a
+-- parent's display NAME, as a string), and InterfaceOptions_AddCategory
+-- registered it. Registration ORDER set the sidebar order.
+--
+-- Forever: Settings.RegisterCanvasLayoutCategory(frame, name) returns a
+-- CATEGORY OBJECT, and subcategories take that object as their parent - not
+-- a name string. Two rules that are easy to get wrong:
+--   * a subcategory must NOT also be passed to RegisterAddOnCategory, or
+--     every section lists itself as a separate addon in the sidebar;
+--   * Settings.OpenToCategory takes a category ID, not a frame.
+--
+-- So registration has to hand back something openable. This registry keeps
+-- the frame-name -> category-ID mapping that Settings.OpenToCategory needs,
+-- because every existing caller in this addon opens panels BY GLOBAL FRAME
+-- NAME (NS.OpenOptionsPanel("WoWClearanceOptionsMain"), the Help deep-links,
+-- the minimap and LDB launchers). Keeping that calling convention means the
+-- migration touches registration and this file, not 20 call sites.
+NS.optionsCategoryByFrame = {}
+local WC_rootCategory = nil
+
+-- Register the ROOT category. Call once, before any subcategory.
+function NS.RegisterOptionsRoot(frame, displayName)
+    if not frame or not Settings or not Settings.RegisterCanvasLayoutCategory then
+        return nil
+    end
+    local category = Settings.RegisterCanvasLayoutCategory(frame, displayName)
+    if not category then
+        return nil
+    end
+    -- Some builds key OpenToCategory off .ID; setting it explicitly makes the
+    -- lookup deterministic rather than depending on an auto-assigned value.
+    category.ID = category.ID or displayName
+    if Settings.RegisterAddOnCategory then
+        Settings.RegisterAddOnCategory(category)
+    end
+    WC_rootCategory = category
+    local name = frame.GetName and frame:GetName()
+    if name then
+        NS.optionsCategoryByFrame[name] = category.ID
+    end
+    return category
+end
+
+-- Register a SUBcategory under the root. Order of calls sets sidebar order,
+-- exactly as the old AddCategory sequence did.
+function NS.RegisterOptionsSub(frame, displayName)
+    if not frame or not WC_rootCategory or not Settings then
+        return nil
+    end
+    if not Settings.RegisterCanvasLayoutSubcategory then
+        return nil
+    end
+    local sub = Settings.RegisterCanvasLayoutSubcategory(WC_rootCategory, frame, displayName)
+    if not sub then
+        return nil
+    end
+    sub.ID = sub.ID or displayName
+    -- Deliberately NOT RegisterAddOnCategory: a subcategory passed there
+    -- lists as its own addon entry in the sidebar.
+    local name = frame.GetName and frame:GetName()
+    if name then
+        NS.optionsCategoryByFrame[name] = sub.ID
+    end
+    return sub
+end
+
+local WC_PANEL_WIDTH = 440 -- default fallback; updated dynamically in OnShow
+
+local function WC_UpdatePanelWidth()
+    local container = NS.OptionsHost()
+    if container and container.GetWidth then
+        local w = container:GetWidth()
+        if w and w > 100 then
+            WC_PANEL_WIDTH = w - 40
+        end
+    end
+end
+-- Stage 8e-viii: expose the current panel width to split panel files
+-- that need it for build-time SetSize calls. WC_PANEL_WIDTH is a
+-- file-scope local that mutates in WC_UpdatePanelWidth, so a static
+-- NS value would freeze at first-call time. A getter closure captures
+-- the upvalue and returns the live value every call.
+NS.GetPanelWidth = function()
+    return WC_PANEL_WIDTH
+end
+
+-- v2.11.0 reactive layout registry. Pre-v2.11.0 the panel-build pass
+-- snapshotted WC_PANEL_WIDTH at first OnShow into every label, every
+-- scroll-content, every list internal width - and never touched them
+-- again. Dragging the Interface Options frame's resize handle did
+-- nothing to the addon's panels because none of those widgets re-read
+-- WC_PANEL_WIDTH after their build call. v2.11.0 hooks
+-- InterfaceOptionsFramePanelContainer's OnSizeChanged once; widgets
+-- whose width snapshots WC_PANEL_WIDTH at construction register
+-- themselves on WC_compCache.widthRegistry.widgets, scroll-wrapped
+-- panels register their (content, last-widget) pair on
+-- WC_compCache.widthRegistry.scrollFits, and the OnSizeChanged callback
+-- walks both lists to re-apply widths and re-fit scroll content. No
+-- widget rebuilds; pure width refresh.
+WC_compCache.widthRegistry = {
+    widgets = {},
+    scrollFits = {},
+}
+
+function WC_compCache.registerWidth(widget, xOffset)
+    if not widget then
+        return
+    end
+    local list = WC_compCache.widthRegistry.widgets
+    list[#list + 1] = { w = widget, x = xOffset or 0 }
+end
+
+-- v2.59.10: remove a widget from the reactive-width registry. Callers
+-- that follow NS.AddCheckbox / setPanelWidth with a manual LEFT+RIGHT
+-- anchor pair (e.g. MakeQualityRow's rowLabel) MUST deregister so the
+-- registry's per-resize SetWidth doesn't fight the anchor-derived width.
+-- No-op when the widget was never registered.
+function WC_compCache.deregisterWidth(widget)
+    if not widget then
+        return
+    end
+    local list = WC_compCache.widthRegistry.widgets
+    for i = #list, 1, -1 do
+        if list[i].w == widget then
+            table.remove(list, i)
+        end
+    end
+end
+
+function WC_compCache.registerScrollFit(content, last, padding)
+    if not content or not last then
+        return
+    end
+    local list = WC_compCache.widthRegistry.scrollFits
+    list[#list + 1] = { c = content, l = last, p = padding }
+end
+
+-- Convenience: SetWidth + register in one call. Use this at every site
+-- that snapshots WC_PANEL_WIDTH into a widget's width so the widget
+-- tracks Interface Options frame resizes. Replaces the v2.10.0-and-
+-- earlier pattern of "widget:SetWidth(WC_PANEL_WIDTH - X)" - that
+-- worked fine on a non-resizable panel but leaves widgets clamped at
+-- their snapshot width on resize.
+function WC_compCache.setPanelWidth(widget, x)
+    if not widget or not widget.SetWidth then
+        return
+    end
+    widget:SetWidth(WC_PANEL_WIDTH - (x or 0))
+    WC_compCache.registerWidth(widget, x or 0)
+end
+
+function WC_compCache.refreshLayouts()
+    WC_UpdatePanelWidth()
+    local widgets = WC_compCache.widthRegistry.widgets
+    for i = 1, #widgets do
+        local d = widgets[i]
+        if d.w and d.w.SetWidth then
+            d.w:SetWidth(math.max(WC_PANEL_WIDTH - d.x, 100))
+        end
+    end
+    -- After widths are re-applied, the wrapped FontString heights change;
+    -- re-fit each scroll content's height to the (now possibly taller)
+    -- last-widget extent. Inlined rather than calling WC_FitScrollContent
+    -- to avoid re-registering on every resize - the registry pair was
+    -- already added at build time.
+    local fits = WC_compCache.widthRegistry.scrollFits
+    local function compute(f)
+        if not f.c or not f.l or not f.l.GetBottom or not f.c.GetTop then
+            return
+        end
+        local top = f.c:GetTop()
+        local bottom = f.l:GetBottom()
+        if top and bottom and top > bottom then
+            f.c:SetHeight(top - bottom + (f.p or 24))
+        end
+    end
+    -- Two-pass identical to WC_FitScrollContent's: first tick catches the
+    -- common case, second tick covers FontStrings whose wrapped height
+    -- isn't fully settled yet.
+    NS.Delay(0.1, function()
+        for i = 1, #fits do
+            compute(fits[i])
+        end
+    end)
+    NS.Delay(0.5, function()
+        for i = 1, #fits do
+            compute(fits[i])
+        end
+    end)
+end
+
+-- Auto-hide a UIPanelScrollFrameTemplate's scroll bar (up arrow, thumb,
+-- down arrow) when content fits the visible area. Avoids the "orphan icons
+-- floating at the right edge" look that lists with few items show.
+--
+-- Implementation note: a manual GetHeight comparison inside Refresh runs
+-- before WoW has laid out the scroll frame on the very first OnShow, so the
+-- initial visibility was always wrong. OnScrollRangeChanged is fired by WoW
+-- whenever it (re)computes the scroll range, which is exactly the moment the
+-- visibility decision is meaningful. The deferred initial update handles the
+-- corner case where the script handler is wired after the first range change.
+local function WC_HookScrollbarAutoHide(scrollFrame)
+    if not scrollFrame or not scrollFrame.GetName then
+        return
+    end
+    local scrollName = scrollFrame:GetName()
+    if not scrollName then
+        return
+    end
+    local sb = _G[scrollName .. "ScrollBar"]
+    if not sb then
+        return
+    end
+    local function update()
+        local yRange = 0
+        if scrollFrame.GetVerticalScrollRange then
+            yRange = scrollFrame:GetVerticalScrollRange() or 0
+        end
+        if yRange <= 0 then
+            sb:Hide()
+        else
+            sb:Show()
+        end
+    end
+    scrollFrame:HookScript("OnScrollRangeChanged", update)
+    -- Initial check: defer one short tick so layout dimensions are stable.
+    NS.Delay(0.1, update)
+end
+NS.HookScrollbarAutoHide = WC_HookScrollbarAutoHide
+
+-- Wrap a settings panel's body in a vertical scroll frame and return a
+-- "content" Frame to use as the widget parent inside that panel's OnShow.
+-- Used for panels whose content overflows the Interface Options sub-panel
+-- safe area at narrow container widths (Merchant). Width is the
+-- panel width minus a 26px scrollbar gutter; the gutter is filled by the
+-- scroll bar itself (or empty when WC_HookScrollbarAutoHide hides it).
+--
+-- After all widgets are placed, the caller should call WC_FitScrollContent
+-- to size the content frame to the actual widget extent.
+local function WC_WrapPanelInScrollFrame(panel)
+    local scrollName = (panel:GetName() or "WoWClearancePanel") .. "Scroll"
+    local scroll = CreateFrame("ScrollFrame", scrollName, panel, "UIPanelScrollFrameTemplate")
+    scroll:SetPoint("TOPLEFT", 0, 0)
+    -- v2.10.0: extended the scroll frame down to within 6 px of the panel's
+    -- bottom edge (was 30 px). With the v2.4.0 quality threshold + v2.10.0
+    -- bind-filter dropdowns, the panel content tall enough for the
+    -- scrollbar to be visible all the time, and the previous 30 px reserve
+    -- left the down arrow floating above the OK/Cancel button strip with
+    -- no visual relationship to the panel frame. WC_FitScrollContent's 24
+    -- px padding still keeps the bottom-most widget clear of the OK/Cancel
+    -- area; the gap that used to come from the 30 px reserve now comes
+    -- from that padding instead.
+    scroll:SetPoint("BOTTOMRIGHT", -26, 6)
+
+    local content = CreateFrame("Frame", nil, scroll)
+    content:SetWidth(math.max(WC_PANEL_WIDTH - 26, 100))
+    content:SetHeight(1) -- expanded by WC_FitScrollContent once widgets are laid out
+    scroll:SetScrollChild(content)
+    -- v2.11.0: register the scroll content's width with the reactive
+    -- layout registry so it tracks Interface Options frame resizes.
+    WC_compCache.registerWidth(content, 26)
+
+    -- v2.10.0: nudge the scrollbar's top anchor 4 px further down. The
+    -- UIPanelScrollFrameTemplate default insets the bar 16 px from the
+    -- ScrollFrame top; the up arrow that lives there ended up sitting
+    -- above the panel's content area on Project Ebonhold's Interface
+    -- Options layout. Bottom anchor stays at the template default (16 px
+    -- inset from ScrollFrame bottom) - the new 6 px outer reserve already
+    -- pulls the down arrow down to where it should be.
+    local sb = _G[scrollName .. "ScrollBar"]
+    if sb then
+        sb:ClearAllPoints()
+        sb:SetPoint("TOPRIGHT", scroll, "TOPRIGHT", -6, -20)
+        sb:SetPoint("BOTTOMRIGHT", scroll, "BOTTOMRIGHT", -6, 16)
+    end
+
+    WC_HookScrollbarAutoHide(scroll)
+    return content
+end
+
+-- Resize a scroll-wrapped content frame to fit the actual extent of its
+-- widgets. Pass the bottom-most widget added during OnShow.
+--
+-- Two passes: the first at 0.1 s catches the common case quickly; the second
+-- at 0.5 s covers FontStrings whose wrapped height isn't fully settled at
+-- the first tick (multi-line tips were getting clipped on the Merchant
+-- panel because their wrapped GetBottom hadn't been computed yet).
+-- Padding defaults to 24 px so the bottom-most widget always has visible
+-- breathing room above the scroll frame's edge.
+local function WC_FitScrollContent(content, lastWidget, padding)
+    if not content or not lastWidget then
+        return
+    end
+    local pad = padding or 24
+    local function compute()
+        if not lastWidget.GetBottom or not content.GetTop then
+            return
+        end
+        local top = content:GetTop()
+        local bottom = lastWidget:GetBottom()
+        if top and bottom and top > bottom then
+            content:SetHeight(top - bottom + pad)
+        end
+    end
+    NS.Delay(0.1, compute)
+    NS.Delay(0.5, compute)
+    -- v2.11.0: register the (content, last) pair so the reactive layout
+    -- handler can re-fit when the panel container resizes (label re-wrap
+    -- changes lastWidget's GetBottom and the content height needs to
+    -- track that). Idempotent re-fits are safe.
+    WC_compCache.registerScrollFit(content, lastWidget, pad)
+end
+NS.FitScrollContent = WC_FitScrollContent
+
+-- v2.17.0: panel OnShow preamble extractor. Replaces the boilerplate
+-- (EnsureDB / WC_UpdatePanelWidth / inited guard / refresh-or-build
+-- branch / optional scroll-wrap) at the top of every Interface Options
+-- panel's OnShow handler. `refresh` is called every OnShow AFTER the
+-- first; `build` is called once under the inited guard. `wrapScroll`
+-- toggles the WC_WrapPanelInScrollFrame call; when true, `build`
+-- receives the scroll-wrap's content frame as its second arg, otherwise
+-- it receives the panel `self`. Either callback may be nil. Hung off
+-- WC_compCache rather than as a file-scope local to stay under Lua
+-- 5.1's 200-locals-per-main-chunk cap (the file is already dense; see
+-- CLAUDE.md and ADDON_GUIDE.md for the discipline). Consolidates the
+-- duplicated preamble across 11 panels (CODE_REVIEW.md item 4) so
+-- future preamble changes - e.g. a UI_SCALE_CHANGED recompute - land
+-- in one place instead of 11.
+function WC_compCache.initPanel(self, refresh, build, wrapScroll)
+    NS.EnsureDB()
+    WC_UpdatePanelWidth()
+    if self.inited then
+        if refresh then
+            refresh(self)
+        end
+        return
+    end
+    self.inited = true
+    local content = self
+    if wrapScroll then
+        content = WC_WrapPanelInScrollFrame(self)
+    end
+    if build then
+        build(self, content)
+    end
+end

@@ -1,0 +1,64 @@
+## Interface: 16001
+## Title: |cff66ccffWoWClearance|r
+## Notes: |cffffb84dBag manager for WoW: Forever|r. Vendoring, deletion, looting, protection rules, and bulk profession processing.
+## Author: Serv
+## Category: Inventory
+## X-Website: https://github.com/powerfulqa/WoWClearance
+## Version: v0.7.0
+## SavedVariables: WoWClearanceDB, WoWClearanceAccountDB
+## IconTexture: Interface\Icons\INV_Misc_Coin_01
+## AddonCompartmentFunc: WoWClearance_OnAddonCompartmentClick
+## OptionalDeps: DaylightUI, DaylightUI_Skins, DaylightUI_Bags
+
+# Bindings.xml is deliberately NOT listed. The client auto-loads a file of
+# that exact name from the addon folder. Listing it here ALSO parses it as a
+# normal UI XML file, where <Binding> is not a valid element - which is what
+# produced "Unrecognized XML: Binding / attribute: name / attribute: header"
+# in-game on 2026-09-19. Verified: no Blizzard .toc lists Bindings.xml, across
+# all 349 shipped tocs. The file still ships; it is just not listed.
+# Serv's shared kit (same file as RaidLootController's RLC_Kit.lua); sets
+# NS.Kit, so it loads first.
+WoWClearance_Kit.lua
+WoWClearance_Core.lua
+WoWClearance_Decision.lua
+WoWClearance_Locale.lua
+WoWClearance_Protection.lua
+WoWClearance_Process.lua
+WoWClearance_PanelInfra.lua
+WoWClearance_ProcessBagsPanel.lua
+WoWClearance_MerchantPanel.lua
+WoWClearance_SellListPanels.lua
+WoWClearance_KeepDeletePanels.lua
+WoWClearance_ProtectionPanel.lua
+WoWClearance_ItemHighlightingPanel.lua
+WoWClearance_ProfilesPanel.lua
+WoWClearance_MainPanel.lua
+WoWClearance_StatsPanel.lua
+WoWClearance_GuildPanel.lua
+WoWClearance_ServerStatsPanel.lua
+WoWClearance_PanelWidgets.lua
+WoWClearance_ListWidget.lua
+# Standalone config window. Must load BEFORE any file that calls NS.SkinWindow
+# at FILE SCOPE - WoWClearance_QuickstartPanel.lua does, and when this sat
+# after it the call hit a nil and aborted the rest of that file, blanking the
+# Quickstart panel. Same load-order class as the NS.OptionsHost failure that
+# cost eight files earlier in this port.
+#
+# It reads panel .name values only inside lazily-built functions, so it does
+# NOT need the panel files loaded first.
+WoWClearance_Window.lua
+WoWClearance_QuickstartPanel.lua
+WoWClearance_Events.lua
+WoWClearance_LootHistory.lua
+WoWClearance_HistoryWindow.lua
+WoWClearance_Comms.lua
+WoWClearance_RealmComms.lua
+WoWClearance_GuildShare.lua
+WoWClearance_ServerShare.lua
+WoWClearance_BagDisplay.lua
+WoWClearance_BugReport.lua
+WoWClearance_Minimap.lua
+WoWClearance_Tooltip.lua
+WoWClearance_BagContextMenu.lua
+WoWClearance_HelpPanel.lua
+WoWClearance_Daylight.lua

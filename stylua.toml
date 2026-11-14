@@ -1,0 +1,15 @@
+# StyLua formatter config for WoWClearance.
+# Run:  stylua *.lua
+# Check:  stylua --check *.lua
+# (After Stage 9 of the file split the addon ships as 23 .lua files; the
+# original monolith WoWClearance.lua was renamed to WoWClearance_Events.lua.)
+# Matches the existing 4-space indentation so adopting the formatter
+# produces no re-indent churn.
+
+column_width = 120
+line_endings = "Unix"
+indent_type = "Spaces"
+indent_width = 4
+quote_style = "AutoPreferDouble"
+call_parentheses = "Always"
+collapse_simple_statement = "Never"

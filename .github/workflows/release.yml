@@ -1,0 +1,131 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to release (e.g. v2.34.1). Must already exist on origin.'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      # On `push: tags`, GITHUB_REF_NAME is the tag name (e.g. v2.34.1).
+      # On `workflow_dispatch`, GITHUB_REF_NAME is the default branch (e.g.
+      # `master`), so the dispatch input wins. The fallback chain lets a
+      # maintainer recover from a missed Actions trigger by re-firing the
+      # release manually without rewriting any of the version-injection
+      # steps below.
+      RELEASE_VERSION: ${{ inputs.tag || github.ref_name }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          ref: master
+
+      - name: Inject version from tag
+        run: |
+          VERSION="${RELEASE_VERSION}"
+          echo "Building version: $VERSION"
+          # The .toc is the only file that carries the version; the Lua
+          # reads it back with C_AddOns.GetAddOnMetadata at load.
+          sed -i "s/@VERSION@/$VERSION/g" WoWClearance.toc
+          sed -i "s/\[v[0-9]*\.[0-9]*\.[0-9]*\]/[$VERSION]/g" WoWClearance.toc
+          sed -i "s/^## Version: .*/## Version: $VERSION/" WoWClearance.toc
+
+      - name: Install Lua 5.1
+        # Retry: the apt mirror occasionally returns exit 100 (a transient
+        # package-fetch failure) which has red-failed otherwise-green runs.
+        # Up to 3 attempts; the final lua5.1 -v asserts the install actually
+        # succeeded so a genuine failure still fails the step loudly.
+        run: |
+          for i in 1 2 3; do
+            sudo apt-get update && sudo apt-get install -y lua5.1 && break
+            echo "apt attempt $i failed; retrying in 5s..." && sleep 5
+          done
+          lua5.1 -v
+
+      - name: Verify before packaging (syntax + all test suites)
+        # v2.39.0: gate the release on the same checks CI runs on master, so a
+        # tag can never ship red. luac is globbed so new split files are
+        # covered automatically; tests/run_all.lua runs every invariant suite
+        # (its list is the single source of truth, shared with test.yml).
+        # Luacheck is not re-run here: master CI gates it on every push, so a
+        # tag cut from green master is already luacheck-clean.
+        run: |
+          for f in WoWClearance*.lua; do luac5.1 -p "$f"; done
+          lua5.1 tests/run_all.lua
+
+      - name: Package addon
+        run: |
+          mkdir -p WoWClearance
+          # v2.30.0+: the addon ships as a multi-file package after the
+          # file-split refactor (see docs/CODE_REVIEW.md item 4). Every
+          # WoWClearance_*.lua file listed in WoWClearance.toc must be
+          # included or the addon fails to load. Add new split files to
+          # this glob as future stages land.
+          # v2.39.0: ship every WoWClearance*.lua via a glob instead of a
+          # hand-maintained list. The old explicit list silently omitted a
+          # newly added file (WoWClearance_Comms.lua), which the .toc still
+          # referenced - the addon would have failed to load. The glob picks
+          # up every current and future split file automatically.
+          # AGENTS.md ships too: it tells an AI coding tool reading the
+          # installed addon what the LICENSE allows before it changes or
+          # copies anything.
+          cp WoWClearance*.lua WoWClearance.toc Bindings.xml LICENSE AGENTS.md WoWClearance/
+          test -s WoWClearance/LICENSE && test -s WoWClearance/AGENTS.md
+          zip -r WoWClearance.zip WoWClearance/
+
+      - name: Commit version update back to repo
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add WoWClearance.toc
+          git commit -m "Update version to ${RELEASE_VERSION} [skip ci]" || echo "No changes to commit"
+          git push origin master
+
+      - name: Extract changelog section for this release
+        # Pulls the `### vX.Y.Z` stanza from CHANGELOG.md and writes it to
+        # release-body.md so the next step can pass it to the release.
+        # Falls back to a small stub if the tag doesn't have a CHANGELOG
+        # entry (e.g. a patch tag the maintainer didn't separately note);
+        # softprops/action-gh-release@v3 will still append its own auto-
+        # generated "Full Changelog" compare link via generate_release_notes.
+        run: |
+          VERSION="${RELEASE_VERSION}"
+          awk -v target="### $VERSION" '
+            $0 == target { found = 1; print; next }
+            found && /^### v/ { found = 0 }
+            found { print }
+          ' CHANGELOG.md > release-body.md
+          if [ ! -s release-body.md ]; then
+            printf "### %s\n\nPatch release. See the previous minor version for the feature description.\n" "$VERSION" > release-body.md
+          fi
+          echo "--- release-body.md (first 20 lines) ---"
+          head -20 release-body.md
+
+      - name: Create release
+        uses: softprops/action-gh-release@v3
+        with:
+          # Explicit tag_name so workflow_dispatch reaches the right tag.
+          # On a `push: tags` trigger the action would default to
+          # GITHUB_REF, but on workflow_dispatch GITHUB_REF is the branch
+          # (e.g. refs/heads/master) and the release would be created
+          # against the wrong ref. RELEASE_VERSION is the unified source
+          # set at job level.
+          tag_name: ${{ env.RELEASE_VERSION }}
+          files: WoWClearance.zip
+          body_path: release-body.md
+          # generate_release_notes still appends the compare-link footer
+          # ("**Full Changelog**: ...vPREV...vCUR") below the body_path
+          # content, so the release page shows the curated changelog FIRST
+          # and the auto-generated compare-link block below it.
+          generate_release_notes: true

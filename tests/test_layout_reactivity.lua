@@ -1,0 +1,344 @@
+#!/usr/bin/env lua
+-- Layout-reactivity regression tests for WoWClearance.
+--
+-- Run from repo root:    lua tests/test_layout_reactivity.lua
+--
+-- v2.11.0 made the Interface Options panels reactive to the user
+-- resizing the container frame (previously every label / list / scroll
+-- snapshotted WC_PANEL_WIDTH at first OnShow and never re-flowed).
+-- The plumbing is small but easy to bypass: a contributor adding a new
+-- panel widget can write `:SetWidth(WC_PANEL_WIDTH - X)` directly and
+-- the widget silently freezes at its build-time width.
+--
+-- These tests are static-pattern checks against the source. They do NOT
+-- run the addon - the WoW API is not mockable - but they catch the four
+-- structural mistakes that caused the original v2.11.0 regression report:
+--
+--   1. Bare :SetWidth(WC_PANEL_WIDTH - X) outside the registered helpers.
+--   2. CreateListUI missing the box:OnSizeChanged hook.
+--   3. Panels using CreateListUI without the ClearAllPoints + BOTTOMRIGHT
+--      anchor follow-up (so list rows can stretch with the parent).
+--   4. List row text using SetWidth instead of TOPLEFT + TOPRIGHT anchors.
+--
+-- Add new tests below as new structural invariants emerge. Keep them
+-- pattern-matching only - this file must run under stock lua5.1 with no
+-- external dependencies so it works in CI without a luarocks step.
+
+-- Post-split: concat every shipped .lua source file. v2.68.1: the list is
+-- DERIVED from WoWClearance.toc (the real load list) instead of a
+-- hand-written array - the array had silently drifted NINE files behind
+-- the .toc. Locale files are excluded as before (no layout code). Same
+-- derivation as tests/test_perf_guardrails.lua.
+local SOURCE_PATHS = {}
+do
+    local fh = assert(io.open("WoWClearance.toc", "rb"), "WoWClearance.toc not found (run from repo root)")
+    local toc = fh:read("*a")
+    fh:close()
+    for line in (toc .. "\n"):gmatch("(.-)\r?\n") do
+        local f = line:match("^(WoWClearance_[%w_]+%.lua)%s*$")
+        if f and not f:match("^WoWClearance_Locale") then
+            SOURCE_PATHS[#SOURCE_PATHS + 1] = f
+        end
+    end
+end
+
+local pieces = {}
+for _, path in ipairs(SOURCE_PATHS) do
+    local f, err = io.open(path, "r")
+    if not f then
+        io.stderr:write("FAIL: cannot open " .. path .. ": " .. tostring(err) .. "\n")
+        os.exit(1)
+    end
+    pieces[#pieces + 1] = f:read("*a")
+    f:close()
+end
+local src = table.concat(pieces, "\n")
+
+local fails = 0
+
+local function check(name, ok, message)
+    if ok then
+        print("PASS  " .. name)
+    else
+        print("FAIL  " .. name)
+        if message then
+            print("      " .. message)
+        end
+        fails = fails + 1
+    end
+end
+
+-- ---------------------------------------------------------------------------
+-- Test 1: no bare :SetWidth(WC_PANEL_WIDTH - N) outside the two known helpers.
+-- ---------------------------------------------------------------------------
+-- Allowed patterns:
+--   * Inside WC_compCache.setPanelWidth:
+--       "widget:SetWidth(WC_PANEL_WIDTH - (x or 0))"
+--   * Inside MakeLabel (pre-Stage-8e-ix-b form):
+--       "fs:SetWidth(WC_PANEL_WIDTH - x)"
+--   * Inside MakeLabel (post-Stage-8e-ix-b form via NS.GetPanelWidth()
+--     because WC_PANEL_WIDTH moved to WoWClearance_PanelInfra.lua and
+--     MakeLabel can no longer reference it as a local upvalue):
+--       "fs:SetWidth(NS.GetPanelWidth() - x)"
+-- Plus comment lines (the helper's own docstring references the pattern).
+-- Any other ":SetWidth(WC_PANEL_WIDTH" or ":SetWidth(NS.GetPanelWidth()"
+-- is a regression - the widget will not track resize. Use
+-- WC_compCache.setPanelWidth instead.
+do
+    local violators = {}
+    for line in src:gmatch("([^\n]+)") do
+        local hasPanelWidth = line:find(":SetWidth%(WC_PANEL_WIDTH")
+            or line:find(":SetWidth%(NS%.GetPanelWidth%(%)")
+        if hasPanelWidth then
+            local stripped = line:gsub("^%s+", "")
+            local isHelperBody = stripped:find("^widget:SetWidth%(WC_PANEL_WIDTH %- %(x or 0%)%)")
+            local isMakeLabelOld = stripped:find("^fs:SetWidth%(WC_PANEL_WIDTH %- x%)")
+            local isMakeLabelNew = stripped:find("^fs:SetWidth%(NS%.GetPanelWidth%(%) %- x%)")
+            local isComment = stripped:find("^%-%-")
+            if not (isHelperBody or isMakeLabelOld or isMakeLabelNew or isComment) then
+                violators[#violators + 1] = line
+            end
+        end
+    end
+    local detail
+    if #violators > 0 then
+        local list = {}
+        for i = 1, #violators do
+            list[i] = "    " .. violators[i]
+        end
+        detail = "found " .. #violators .. " bare snapshot(s); use WC_compCache.setPanelWidth instead:\n" ..
+                 table.concat(list, "\n")
+    end
+    check("no bare SetWidth(WC_PANEL_WIDTH-X) outside helpers", #violators == 0, detail)
+end
+
+-- ---------------------------------------------------------------------------
+-- Test 2: CreateListUI must install an OnSizeChanged hook on its
+-- `box` so the ScrollChild content (and therefore the rows anchored
+-- to it) tracks parent resize.
+--
+-- v2.18.0 split CreateListUI: the scroll-area setup (including the
+-- OnSizeChanged hook) moved into `WC_compCache.buildListScrollArea`,
+-- which CreateListUI calls. The reactivity chain is unchanged; the
+-- hook just lives in the extracted helper instead of inline. The
+-- check follows the call by accepting the hook anywhere in either the
+-- function's own body or the buildListScrollArea helper's body.
+--
+-- v2.30.x (Stage 8e-vii) dropped CreateNameListUI as dead code; the
+-- second arm of this test that locked its hook is no longer needed.
+-- ---------------------------------------------------------------------------
+do
+    local function bodyOf(funcName, funcPrefix)
+        -- funcPrefix is "local function " or "function " (for table methods)
+        local startIdx = src:find(funcPrefix .. funcName)
+        if not startIdx then
+            return nil
+        end
+        -- Take everything from this function definition to the next
+        -- function (top-level local or table-method) - good enough for the
+        -- structural check and avoids needing a real Lua parser.
+        local nextLocal = src:find("\nlocal function ", startIdx + 1) or #src
+        local nextTbl = src:find("\nfunction [A-Za-z_]+%.[A-Za-z_]+", startIdx + 1) or #src
+        local nextIdx = math.min(nextLocal, nextTbl)
+        return src:sub(startIdx, nextIdx)
+    end
+
+    local function listBodyHasHook(funcName)
+        local body = bodyOf(funcName, "local function ")
+        if not body then
+            return nil
+        end
+        return body:find('box:SetScript%("OnSizeChanged"') ~= nil
+    end
+
+    local function helperHasHook(helperName)
+        local body = bodyOf(helperName, "function WC_compCache%.")
+        if not body then
+            return nil
+        end
+        return body:find('box:SetScript%("OnSizeChanged"') ~= nil
+    end
+
+    -- CreateListUI: hook may live inline OR in buildListScrollArea (v2.18.0+).
+    local listInline = listBodyHasHook("CreateListUI")
+    local listInHelper = helperHasHook("buildListScrollArea")
+    check("CreateListUI installs box:OnSizeChanged",
+        listInline or listInHelper,
+        "missing - rows inside CreateListUI will not stretch with the panel on resize"
+            .. " (checked CreateListUI body and WC_compCache.buildListScrollArea)")
+    -- The Stage 8e-vii CharPanel extraction dropped CreateNameListUI (it
+    -- was orphaned in §4.5 when the per-character allowlist UI was
+    -- decommissioned). The corresponding box:OnSizeChanged check is
+    -- removed since the function no longer exists.
+end
+
+-- ---------------------------------------------------------------------------
+-- Test 3: every panel that uses CreateListUI must
+-- follow up with ClearAllPoints + BOTTOMRIGHT anchor so the list box
+-- itself tracks the panel size. Without this the box stays at its
+-- build-time width and the OnSizeChanged inside the helper is never
+-- triggered with a new size.
+-- ---------------------------------------------------------------------------
+do
+    local panelsMissingAnchor = {}
+    -- Capture each "self.listUI = (NS.)?CreateListUI(..." line plus
+    -- the next ~6 lines of context. If "ClearAllPoints" and "BOTTOMRIGHT"
+    -- aren't both present in that block, the panel doesn't anchor properly.
+    -- v2.30.x panels call NS.CreateListUI from split files; the bare
+    -- `CreateListUI(` form is the original in-WoWClearance_Events.lua call site.
+    for callLine in src:gmatch("(self%.listUI = N?S?%.?CreateListUI%([^\n]*)") do
+        local startIdx = src:find(callLine, 1, true)
+        if startIdx then
+            local block = src:sub(startIdx, startIdx + 600) -- ~10-15 lines
+            -- Stop the block at "self.listUI:Refresh()" or "end)" - whichever
+            -- comes first - so we don't leak into the next panel.
+            local stopAt = block:find("self%.listUI:Refresh%(%)") or block:find("\nend%)")
+            if stopAt then
+                block = block:sub(1, stopAt)
+            end
+            if not (block:find("ClearAllPoints") and block:find("BOTTOMRIGHT")) then
+                panelsMissingAnchor[#panelsMissingAnchor + 1] = callLine
+            end
+        end
+    end
+    local detail
+    if #panelsMissingAnchor > 0 then
+        local list = {}
+        for i = 1, #panelsMissingAnchor do
+            list[i] = "    " .. panelsMissingAnchor[i]
+        end
+        detail = "found " .. #panelsMissingAnchor .. " call(s) without ClearAllPoints + BOTTOMRIGHT setup:\n" ..
+                 table.concat(list, "\n")
+    end
+    check("every CreateListUI/CreateNameListUI call anchors BOTTOMRIGHT",
+          #panelsMissingAnchor == 0, detail)
+end
+
+-- ---------------------------------------------------------------------------
+-- Test 4: list row text must use SetPoint("RIGHT", ...) anchoring, not
+-- SetWidth(w - N). The latter snapshots width at construction; the
+-- former auto-stretches with the parent row.
+-- ---------------------------------------------------------------------------
+do
+    -- Look for the GetRow-style construction of the row text. The
+    -- regression pattern was: text:SetWidth(w - 106). The fix replaces
+    -- it with: text:SetPoint("RIGHT", rm, "LEFT", -8, 0)
+    local rowTextSnapshots = 0
+    for line in src:gmatch("([^\n]+)") do
+        if line:find("text:SetWidth%(w %- %d") then
+            rowTextSnapshots = rowTextSnapshots + 1
+        end
+    end
+    check("list row text uses anchors not SetWidth(w-N)",
+        rowTextSnapshots == 0,
+        "found " .. rowTextSnapshots ..
+        " row text snapshot(s); use text:SetPoint(\"RIGHT\", rm, \"LEFT\", ...) instead")
+end
+
+-- ---------------------------------------------------------------------------
+-- Test 5: the reactive layout machinery itself must be wired up. If any
+-- of these go missing the whole system silently degrades to v2.10.0
+-- behaviour (snapshotted everything).
+-- ---------------------------------------------------------------------------
+do
+    check("widthRegistry is defined on WC_compCache",
+        src:find("WC_compCache%.widthRegistry%s*=%s*{") ~= nil,
+        "WC_compCache.widthRegistry table missing - registerWidth has nothing to push to")
+
+    check("WC_compCache.refreshLayouts is defined",
+        src:find("function WC_compCache%.refreshLayouts%(%)") ~= nil,
+        "refresh entrypoint missing - the OnSizeChanged hook will fail")
+
+    -- The host frame moved with the port: InterfaceOptionsFramePanelContainer
+    -- is absent on Forever and SettingsPanel.Container replaces it, resolved
+    -- at call time through NS.OptionsHost(). The invariant is unchanged - the
+    -- hook must exist or panels stop reflowing on resize.
+    check("options-host OnSizeChanged hook is wired",
+        src:find('host:HookScript%("OnSizeChanged"') ~= nil
+            and src:find("NS%.OptionsHost") ~= nil,
+        "the host OnSizeChanged hook is gone - panels will not refresh on resize")
+end
+
+-- ---------------------------------------------------------------------------
+-- Test 6: panels with meaningful vertical content must be scroll-wrapped
+-- via WC_WrapPanelInScrollFrame so a short Interface Options frame
+-- doesn't bury the bottom widgets behind the OK/Cancel button strip.
+-- The Main panel was originally not wrapped; v2.12.0 fixed that after
+-- the user reported the Slash Commands block overlapping the buttons
+-- on a narrow window. List-style panels (Whitelist*, Blacklist,
+-- Deletion, Character Settings) self-stretch via list anchoring and
+-- don't need scroll wrap.
+--
+-- v2.17.0 extracted the panel OnShow boilerplate into
+-- `WC_compCache.initPanel(self, refresh, build, wrapScroll)`. Panels
+-- that previously called `WC_WrapPanelInScrollFrame` inline now pass
+-- `true` as the wrapScroll arg and the helper does the call internally.
+-- The test accepts either form: literal `WC_WrapPanelInScrollFrame(`
+-- (old style or build-callback style) OR the `end, true)` closer that
+-- marks an initPanel call with wrapScroll=true. The `end, true)`
+-- pattern is specific enough not to match SetWordWrap(true) or other
+-- bare `true)` occurrences inside callback bodies.
+-- ---------------------------------------------------------------------------
+do
+    local panelsNeedingWrap = {
+        { name = "MainOptions",      onShowMarker = "MainOptions:SetScript%(\"OnShow\"" },
+        { name = "MerchantPanel",    onShowMarker = "MerchantPanel:SetScript%(\"OnShow\"" },
+    }
+    local missing = {}
+    for _, p in ipairs(panelsNeedingWrap) do
+        local startIdx = src:find(p.onShowMarker)
+        if not startIdx then
+            missing[#missing + 1] = p.name .. " (OnShow handler not found)"
+        else
+            -- Block boundary: from this OnShow to the start of the next
+            -- panel's OnShow (or the registration block, whichever comes
+            -- first). This keeps each panel's check scoped to its own body
+            -- rather than leaking into adjacent panels.
+            local nextOnShow = src:find("[A-Za-z_]+:SetScript%(\"OnShow\"", startIdx + #p.onShowMarker)
+            local nextRegister = src:find("\nInterfaceOptions_AddCategory", startIdx + 1)
+            local endIdx = nextOnShow or nextRegister or (startIdx + 15000)
+            if nextOnShow and nextRegister then
+                endIdx = math.min(nextOnShow, nextRegister)
+            end
+            local block = src:sub(startIdx, endIdx)
+            local hasOldWrap = block:find("WC_WrapPanelInScrollFrame")
+            local hasNewWrap = block:find("end, true%)")
+            if not (hasOldWrap or hasNewWrap) then
+                missing[#missing + 1] = p.name
+            end
+        end
+    end
+    local detail
+    if #missing > 0 then
+        detail = "missing scroll wrap on: " .. table.concat(missing, ", ")
+    end
+    check("major content panels are scroll-wrapped via WC_WrapPanelInScrollFrame",
+        #missing == 0, detail)
+end
+
+-- ---------------------------------------------------------------------------
+-- Test 7: the .toc is the single source of the version.
+-- ---------------------------------------------------------------------------
+-- A hard-coded Lua constant drifted from the .toc more than once (pre-v2.13.2,
+-- and again after the port when tags stopped). The runtime now reads the
+-- .toc Version field, and the release workflow rewrites only the .toc.
+do
+    check("ADDON_VERSION is read from the .toc",
+        src:find('local ADDON_VERSION = GetAddOnMetadata(ADDON_NAME, "Version")', 1, true) ~= nil,
+        "WoWClearance_Events.lua must read the version with GetAddOnMetadata")
+    check("no hard-coded ADDON_VERSION literal",
+        src:find('local ADDON_VERSION%s*=%s*"') == nil,
+        "a literal version in Lua drifts from the .toc")
+end
+
+-- ---------------------------------------------------------------------------
+-- Result.
+-- ---------------------------------------------------------------------------
+print()
+if fails > 0 then
+    io.stderr:write("RESULT: " .. fails .. " test(s) failed\n")
+    os.exit(1)
+else
+    print("RESULT: all tests passed")
+    os.exit(0)
+end
