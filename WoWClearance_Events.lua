@@ -6388,7 +6388,7 @@ StaticPopupDialogs["WC_CONFIRM_CLEAN_UPGRADES"] = {
 -- this out so a player who applies a preset can't be surprised about
 -- Sell / Keep / Delete lists.
 StaticPopupDialogs["WC_APPLY_QUICKSTART"] = {
-    text = L["Apply %s?\n\nThis changes your speed, protection, auto-sell, and visual settings.\n\nYour |cffb6ffb6Sell|r, |cffb6ffb6Keep|r, and |cffb6ffb6Delete|r lists stay exactly as they are."],
+    text = L["Apply %s?\n\nThis changes your speed, protection, auto-sell, and visual settings, and turns vendor selling on.\n\nYour |cffb6ffb6Sell|r, |cffb6ffb6Keep|r, and |cffb6ffb6Delete|r lists stay exactly as they are."],
     button1 = "Apply",
     button2 = CANCEL,
     OnAccept = function(self, data)

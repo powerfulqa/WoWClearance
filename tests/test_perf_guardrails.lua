@@ -6236,6 +6236,10 @@ do
         delete = "yes",
         -- Q9b greyDelete. Fresh install: DB.markGreyForDeletion = false
         greyDelete = "no",
+        -- Q4c greys. Fresh install: DB.sellGreys = true -> "on".
+        greys = "on",
+        -- Q4d vendorSell. Fresh install: DB.sellAtVendor = true -> "on".
+        vendorSell = "on",
     }
 
     for qid, val in pairs(labeled) do

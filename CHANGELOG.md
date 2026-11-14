@@ -35,6 +35,11 @@ The first public release.
   tooltips.
 - **Reporting bugs.** The Help panel now links to the issues page on
   GitHub.
+- **Quickstart.** Two new questions cover the vendor and grey switches,
+  and presets turn vendor selling on. Border and item level answers turn
+  item highlighting on with them. The fixed item level cap now defaults to
+  ten below your level; the old defaults were above every item in the
+  game and would have sold all Uncommon and Rare gear.
 - **Help and wording tidy-up.** Out-of-date Help answers are corrected,
   three tooltip labels gain a Help entry (new appearance, tradeable,
   locked), and Current Rules lists the appearance and trade protections.

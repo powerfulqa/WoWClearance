@@ -104,11 +104,19 @@ local QuickstartContent = CreateFrame("Frame", nil, QuickstartPanel)
 QuickstartContent:SetPoint("TOPLEFT", QuickstartPanel, "TOPLEFT", 16, -44)
 QuickstartContent:SetPoint("BOTTOMRIGHT", QuickstartPanel, "BOTTOMRIGHT", -16, 16)
 
--- Default fixed-iLvl caps per rarity for the Q4b "fixed cap" mode. Used
--- when the player picks fixed mode but doesn't enter values (or enters
--- garbage). Tuned to mid-vanilla cap points so a new character at any
--- level gets sensible behaviour.
-local DEFAULT_FIXED_ILVL = { 45, 85, 125, 165 }
+-- Default fixed-iLvl cap for the Q4b "fixed cap" mode, used when the player
+-- picks fixed mode without entering a number. The same for every rarity:
+-- ten below the character's level, so only clearly outgrown gear sells. On
+-- this client item level tracks character level (level 60 gear sits around
+-- item level 55-65, the best raid gear around 80), so the old per-rarity
+-- constants (45 / 85 / 125 / 165, from a higher item-level curve) sat above
+-- every Uncommon, Rare and Epic item and would have sold all of them.
+-- Indexed like a table so the call sites read the same as before.
+local DEFAULT_FIXED_ILVL = setmetatable({}, {
+    __index = function()
+        return math.max(1, ((UnitLevel and UnitLevel("player")) or 1) - 10)
+    end,
+})
 
 -- ============================================================================
 -- ANSWER_MAP - each question's choice keys map to a function that writes
@@ -178,6 +186,24 @@ local ANSWER_MAP = {
             DB.qualityRules[3].enabled = true
             DB.qualityRules[3].bindFilter = "boe"
             DB.qualityRules[4].enabled = false
+        end,
+    },
+    -- The two Merchant Settings master switches. Without these a preset
+    -- could "auto-sell outgrown gear" while vendor selling was switched off.
+    vendorSell = {
+        on = function(DB)
+            DB.sellAtVendor = true
+        end,
+        off = function(DB)
+            DB.sellAtVendor = false
+        end,
+    },
+    greys = {
+        on = function(DB)
+            DB.sellGreys = true
+        end,
+        off = function(DB)
+            DB.sellGreys = false
         end,
     },
     ilvlMode = {
@@ -312,18 +338,21 @@ local ANSWER_MAP = {
             DB.itemLevelOverlay.enabled = false
         end,
         bags = function(DB)
+            DB.itemHighlighting = true -- the master switch would hide it
             DB.itemLevelOverlay.enabled = true
             DB.itemLevelOverlay.bags = true
             DB.itemLevelOverlay.paperdoll = false
             DB.itemLevelOverlay.merchant = false
         end,
         bagsPaperdoll = function(DB)
+            DB.itemHighlighting = true
             DB.itemLevelOverlay.enabled = true
             DB.itemLevelOverlay.bags = true
             DB.itemLevelOverlay.paperdoll = true
             DB.itemLevelOverlay.merchant = false
         end,
         everywhere = function(DB)
+            DB.itemHighlighting = true
             DB.itemLevelOverlay.enabled = true
             DB.itemLevelOverlay.bags = true
             DB.itemLevelOverlay.paperdoll = true
@@ -332,6 +361,7 @@ local ANSWER_MAP = {
     },
     borders = {
         on = function(DB)
+            DB.itemHighlighting = true
             DB.sellBorderEnabled = true
         end,
         off = function(DB)
@@ -341,7 +371,7 @@ local ANSWER_MAP = {
 }
 
 -- ============================================================================
--- PRESETS - each preset is a complete answer set for all 16 questions.
+-- PRESETS - each preset is a complete answer set for every question.
 -- Differences from "recommended" are minimal; see plan file for the full
 -- rationale.
 -- ============================================================================
@@ -355,12 +385,14 @@ local PRESETS = {
             autoOpen = "on",
             autoSell = "commonUncommon",
             ilvlMode = "dynamic",
+            vendorSell = "on",
+            greys = "on",
             protect = "wearing",
             tomes = "unlearned",
             sellRecipes = "no",
             repair = "gold",
             keepBags = "yes",
-            delete = "no",
+            delete = "yes",
             greyDelete = "no",
             ilvlSurfaces = "bags",
             borders = "on",
@@ -368,13 +400,15 @@ local PRESETS = {
     },
     cautious = {
         name = L["Cautious"],
-        desc = L["Same auto-sell as Recommended, plus protects items that might upgrade you and items in your gear sets."],
+        desc = L["Same auto-sell as Recommended, plus protects items that might upgrade you, items in your gear sets and every recipe. Delete Next is off."],
         answers = {
             speed = "normal",
             fastLoot = "on",
             autoOpen = "on",
             autoSell = "commonUncommon",
             ilvlMode = "dynamic",
+            vendorSell = "on",
+            greys = "on",
             protect = "wearingUpgradesSets",
             tomes = "all",
             sellRecipes = "no",
@@ -395,12 +429,14 @@ local PRESETS = {
             autoOpen = "on",
             autoSell = "upToRares",
             ilvlMode = "dynamic",
+            vendorSell = "on",
+            greys = "on",
             protect = "wearing",
             tomes = "unlearned",
             sellRecipes = "boeOnly",
             repair = "guild",
             keepBags = "no",
-            delete = "no",
+            delete = "yes",
             greyDelete = "no",
             ilvlSurfaces = "bagsPaperdoll",
             borders = "on",
@@ -408,13 +444,15 @@ local PRESETS = {
     },
     power = {
         name = L["Power"],
-        desc = L["Turbo vendoring, and Delete Next is allowed. Read the disconnect warning."],
+        desc = L["Turbo vendoring, sells known recipes too, item levels everywhere. Read the disconnect warning."],
         answers = {
             speed = "turbo",
             fastLoot = "on",
             autoOpen = "on",
             autoSell = "upToRares",
             ilvlMode = "dynamic",
+            vendorSell = "on",
+            greys = "on",
             protect = "wearing",
             tomes = "unlearned",
             sellRecipes = "all",
@@ -461,6 +499,9 @@ local function WC_ApplyQuickstart(answers, fixedCaps, presetKey)
     -- Repaint surfaces that reflect the new settings.
     if NS.RefreshSellBorders then
         NS.RefreshSellBorders()
+    end
+    if NS.RefreshItemLevelOverlay then
+        NS.RefreshItemLevelOverlay()
     end
     local panelsToRefresh = {
         "WoWClearanceOptionsMain",
@@ -530,6 +571,9 @@ local function WC_ApplyAnswerImmediate(questionKey, value)
     if NS.RefreshSellBorders then
         NS.RefreshSellBorders()
     end
+    if NS.RefreshItemLevelOverlay then
+        NS.RefreshItemLevelOverlay()
+    end
     local panelsToRefresh = {
         "WoWClearanceOptionsMerchant",
         "WoWClearanceOptionsBlacklistSettings",
@@ -581,6 +625,8 @@ local function snapshotAnswersFromDB(DB)
     else
         a.autoSell = "none"
     end
+    a.vendorSell = DB.sellAtVendor ~= false and "on" or "off"
+    a.greys = DB.sellGreys ~= false and "on" or "off"
     -- Q4b iLvl mode - look at the first enabled rule (or rule 1 if none)
     local sampleRule = DB.qualityRules and DB.qualityRules[1]
     a.ilvlMode = (sampleRule and sampleRule.useEquippedILvl) and "dynamic" or "fixed"
@@ -635,7 +681,7 @@ local function snapshotAnswersFromDB(DB)
     a.delete = DB.enableDeletion and "yes" or "no"
     -- Q12 iLvl surfaces
     local ilo = DB.itemLevelOverlay
-    if not (ilo and ilo.enabled) then
+    if not (ilo and ilo.enabled) or DB.itemHighlighting == false then
         a.ilvlSurfaces = "none"
     elseif ilo.merchant then
         a.ilvlSurfaces = "everywhere"
@@ -645,7 +691,7 @@ local function snapshotAnswersFromDB(DB)
         a.ilvlSurfaces = "bags"
     end
     -- Q13 borders
-    a.borders = DB.sellBorderEnabled and "on" or "off"
+    a.borders = (DB.sellBorderEnabled and DB.itemHighlighting ~= false) and "on" or "off"
 
     -- Fixed-cap snapshot for Q4b's EditBoxes
     local caps = { 0, 0, 0, 0 }
@@ -903,9 +949,9 @@ local function buildPanel(self, content)
             content,
             lastAnchor,
             "autoOpen",
-            L["Q3. Auto-open lockboxes & engineered containers?"],
+            L["Q3. Auto-open containers in your bags?"],
             {
-                { value = "on", label = L["Yes - after Pick Lock or when bags settle"] },
+                { value = "on", label = L["Yes - gift bags, pouches and picked lockboxes"] },
                 { value = "off", label = L["No - I'll open them manually"] },
             },
             refresh
@@ -1096,6 +1142,16 @@ local function buildPanel(self, content)
         -- doesn't leave a phantom gap below hidden cap rows.
         updateCapBoxesVisible()
 
+        lastAnchor = makeRadioGroup(content, lastAnchor, "greys", L["Q4c. Sell grey (junk) items?"], {
+            { value = "on", label = L["Yes (default)"] },
+            { value = "off", label = L["No - keep my greys"] },
+        }, refresh)
+
+        lastAnchor = makeRadioGroup(content, lastAnchor, "vendorSell", L["Q4d. Sell by itself when you open a vendor?"], {
+            { value = "on", label = L["Yes (default)"] },
+            { value = "off", label = L["No - another addon sells for me, or I use the Force Sell key"] },
+        }, refresh)
+
         local sec3 = makeSectionHeader(content, L["Section 3: What WC Protects"], lastAnchor, -20)
 
         lastAnchor = makeRadioGroup(content, sec3, "protect", L["Q5. What should WC auto-protect from selling?"], {
@@ -1191,7 +1247,7 @@ local function buildPanel(self, content)
             content,
             lastAnchor,
             "borders",
-            L["Q11. Color-code bag-slot borders by WC's verdict?"],
+            L["Q11. Colour bag-slot borders by what WC will do?"],
             {
                 { value = "on", label = L["Yes (Red = delete, Cyan = sell, etc.)"] },
                 { value = "off", label = L["No"] },
