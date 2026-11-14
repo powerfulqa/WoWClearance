@@ -79,7 +79,7 @@ With the DaylightUI addon installed:
 - Its bags show the sell and delete borders, and get Delete List, Sell List, Account Sell List and Keep List groups.
 - Its Alt+Right-Click menu carries the WoWClearance rows, so there is one menu instead of two.
 - Items you Lock in its bags are never sold, deleted or processed. Items you mark "Sell as junk" are sold.
-- Only one addon sells at a vendor: its junk sale waits while WoWClearance sells.
+- Only one addon sells junk at a vendor: its junk sale waits while WoWClearance is selling junk ("Sell items at vendors" and "Sell grey items" both on).
 - WoWClearance has a section in its options, a `/dui wc` command, a "Vendored" data text, and windows you can place with `/dui unlock`.
 
 Bag addons that sort items into groups get the borders too.

@@ -154,12 +154,13 @@ check("sellGreys=nil still sells a grey as junk", sellsAs(makeCtx({ sellGreys = 
 check("sellGreys=false: Sell-Listed grey still sells",
     sellsAs(makeCtx({ sellGreys = false, whitelistedChar = true }), "whitelist_char"))
 -- Host bag UI "sell as junk" mark: sells as junk at any quality (with a
--- price), even with greys off. Its lock arrives as blacklisted (the adapter
+-- price), under the same "Sell grey items" switch. Its lock arrives as blacklisted (the adapter
 -- folds it in), so a locked marked item is kept.
 check("hostMarkedJunk sells a green as junk",
     sellsAs(makeCtx({ quality = 2, hostMarkedJunk = true }), "junk"))
-check("hostMarkedJunk sells with sellGreys=false",
-    sellsAs(makeCtx({ sellGreys = false, hostMarkedJunk = true }), "junk"))
+-- With "Sell grey items" off the host sells its own junk, so we must not.
+check("hostMarkedJunk does not sell with sellGreys=false",
+    isNone(makeCtx({ quality = 2, sellGreys = false, hostMarkedJunk = true })))
 check("hostMarkedJunk with no price -> none",
     isNone(makeCtx({ quality = 2, hostMarkedJunk = true, sellPrice = 0 })))
 check("locked (blacklisted) marked junk is kept", (function()

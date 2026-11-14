@@ -80,7 +80,7 @@ if DUI.RegisterPlugin and DUI.RegisterModule then
                                 label = L["Selling"],
                                 items = {
                                     { type = "toggle", label = L["Sell items at vendors"], get = dbGet("sellAtVendor"), set = dbSet("sellAtVendor"),
-                                      desc = L["Sells your junk and rule matches when you talk to a vendor. While on, DaylightUI's own junk sale waits."] },
+                                      desc = L["Sells your junk and rule matches when you talk to a vendor. DaylightUI's own junk sale waits while this and Sell grey items are both on."] },
                                     { type = "toggle", label = L["Sell grey items"], get = dbGet("sellGreys"), set = dbSet("sellGreys", syncHighlight) },
                                     { type = "toggle", label = L["Repair gear while selling"], get = dbGet("repairGear"), set = dbSet("repairGear") },
                                 },

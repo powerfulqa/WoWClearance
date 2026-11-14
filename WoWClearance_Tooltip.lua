@@ -198,7 +198,7 @@ local function WC_AnnotateTooltipInner(tooltip, out)
         -- 47 grey shoulderpad on their level-80 character will vendor.
         -- Reported by an in-game tester via Discord: "I dont see the Will
         -- Sell - Junk".
-        if sellPrice and sellPrice > 0 and ((quality == 0 and DB.sellGreys ~= false) or ctx.hostMarkedJunk) then
+        if sellPrice and sellPrice > 0 and DB.sellGreys ~= false and (quality == 0 or ctx.hostMarkedJunk) then
             statusLine = "|cffb6ffb6" .. L["Will Sell (junk)"] .. "|r"
             statusTag = "willsell"
         elseif quality and quality >= 1 and quality <= 4 and sellPrice and sellPrice > 0 then

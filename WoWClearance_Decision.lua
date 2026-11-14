@@ -70,7 +70,9 @@ end
 -- settings. The one exception is the player's own "Sell grey items"
 -- toggle (ctx.sellGreys == false); nil reads as ON so old fixtures and
 -- saves keep the guarantee. An item a host bag UI marked as junk
--- (ctx.hostMarkedJunk) also matches isJunk, at any quality. Do NOT combine the isJunk / qualityPass / whitelistPass
+-- (ctx.hostMarkedJunk) also matches isJunk, at any quality, under the
+-- same toggle: with it off the host sells its own junk (see the one-seller
+-- hook in BagDisplay), so we must not sell it as well. Do NOT combine the isJunk / qualityPass / whitelistPass
 -- passes into "one cleaner check" - that silently breaks the
 -- grey-always-sold guarantee (ADDON_GUIDE "Grey items are sold by default").
 -- The runtime fixtures in tests/test_decision.lua pin this for the first
@@ -85,7 +87,7 @@ function Decision.sell(ctx)
     local quality = ctx.quality
     local junkOnly = ctx.junkOnly
     local hasSellPrice = ctx.sellPrice and ctx.sellPrice > 0
-    local isJunk = hasSellPrice and ((quality == 0 and ctx.sellGreys ~= false) or ctx.hostMarkedJunk == true)
+    local isJunk = hasSellPrice and ctx.sellGreys ~= false and (quality == 0 or ctx.hostMarkedJunk == true)
     local whitelistPass = not junkOnly
         and hasSellPrice
         and (ctx.whitelistedChar or ctx.whitelistedAccount)

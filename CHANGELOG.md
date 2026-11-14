@@ -6,6 +6,13 @@ release history is in [its own changelog](https://github.com/powerfulqa/EbonClea
 Version numbers there belong to that project and do not continue into
 this one.
 
+### v0.8.2
+
+- **Fix: junk not sold with DaylightUI.** With "Sell grey items" off,
+  WoWClearance did not sell junk but still stopped DaylightUI's own junk
+  sale, so junk was never sold. DaylightUI's sale now waits only while
+  WoWClearance is selling junk itself.
+
 ### v0.8.1
 
 - **Fix: Process Next did nothing.** Pressing Process Next in Process

@@ -844,14 +844,23 @@ function WC_compCache.installHostBagBorderHook()
             end
         end
 
-        -- One seller at vendors: while we sell at vendors, the host's own
-        -- "sell junk" reads as off, so nothing is sold twice. With our
-        -- vendor selling off, the host sells as it normally would.
+        -- One seller of JUNK at vendors. The host's own "sell junk" reads
+        -- as off only while we will sell that junk ourselves: vendor selling
+        -- on AND "Sell grey items" on. With either off we do not sell junk
+        -- (Decision.sell gates greys and host junk marks on sellGreys), so
+        -- the host's sale must run or junk would never sell at all - the
+        -- v0.8.1 bug, where sellGreys was off and the host was still muted.
         if type(bns.Setting) == "function" then
             me.Wrap(bns, "Setting", function(original, key, ...)
                 if key == "sellJunk" then
                     local DB = NS.DB
-                    if DB and DB.sellAtVendor ~= false and NS.IsAddonEnabledForChar and NS.IsAddonEnabledForChar() then
+                    if
+                        DB
+                        and DB.sellAtVendor ~= false
+                        and DB.sellGreys ~= false
+                        and NS.IsAddonEnabledForChar
+                        and NS.IsAddonEnabledForChar()
+                    then
                         return false
                     end
                 end
@@ -1641,7 +1650,7 @@ function WC_compCache.describeSellability(bag, slot)
         step("deleteListVerdict", true, L["not on Delete List"])
     end
 
-    local isJunk = hasSellPrice and ((quality == 0 and ctx.sellGreys ~= false) or ctx.hostMarkedJunk == true)
+    local isJunk = hasSellPrice and ctx.sellGreys ~= false and (quality == 0 or ctx.hostMarkedJunk == true)
     step(
         "greyAutoSell",
         isJunk,
