@@ -4,7 +4,7 @@
 ## Author: Serv
 ## Category: Inventory
 ## X-Website: https://github.com/powerfulqa/WoWClearance
-## Version: v0.8.1
+## Version: v0.8.2
 ## SavedVariables: WoWClearanceDB, WoWClearanceAccountDB
 ## IconTexture: Interface\Icons\INV_Misc_Coin_01
 ## AddonCompartmentFunc: WoWClearance_OnAddonCompartmentClick
