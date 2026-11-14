@@ -141,7 +141,7 @@ MerchantPanel:SetScript("OnShow", function(self)
         -- Panel-specific intro only. Generic "grey junk auto-sells" cross-cut
         -- removed; it's covered on the Main panel.
         local intro =
-            NS.MakeLabel(content, L["Change which items sell automatically, and at which merchants."], 16, -44)
+            NS.MakeLabel(content, L["Change which items sell automatically at vendors."], 16, -44)
 
         -- Master switch for the automatic sell at a vendor. Off leaves repair
         -- and the Force Sell key working.
@@ -432,7 +432,7 @@ MerchantPanel:SetScript("OnShow", function(self)
         -- "sell up to quality X" model. Default all off; opt-in per rarity.
         local thresholdHeader = content:CreateFontString(nil, "ARTWORK", "GameFontNormal")
         thresholdHeader:SetPoint("TOPLEFT", turboModeNote, "BOTTOMLEFT", -26, -24)
-        thresholdHeader:SetText(L["Quality Threshold"])
+        thresholdHeader:SetText(L["Quality rules"])
         NS.AddHelpIcon(content, thresholdHeader, "LEFT", "RIGHT", 6, 0, "gate-quality-rules")
 
         -- v2.10.0: bind-type filter options shared across all four rarity rows.

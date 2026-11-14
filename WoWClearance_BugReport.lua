@@ -1001,14 +1001,14 @@ local function WC_BuildRuleSummary()
         .. onoff(DB.autoMarkKnownUnsellableRecipes) .. ") adds learned")
     add("      profession recipes with no vendor value to the Delete List. Requires Sell Known Recipes.")
     add("")
-    add("Step 2: Should I SELL this?")
+    add("Step 2: Should I SELL this?  ('Sell items at vendors' is " .. onoff(DB.sellAtVendor ~= false) .. ")")
     add("  Yes, if ANY ONE of the reasons below matches (the rules don't")
     add("  cancel each other - each one independently triggers a sell):")
-    add("    - It's grey junk with a vendor price")
+    add("    - It's grey junk with a vendor price ('Sell grey items' is " .. onoff(DB.sellGreys ~= false) .. ")")
     add("    - It's on your Sell List or Account Sell List")
     add("    - It matches a quality rule:")
     if DB and DB.qualityRules then
-        local qNames = { "White", "Green", "Blue", "Purple" }
+        local qNames = { "White", "Green", "Blue", "Epic" }
         for q = 1, 4 do
             local r = DB.qualityRules[q]
             local enabled = r and r.enabled
@@ -1040,11 +1040,15 @@ local function WC_BuildRuleSummary()
     add("  ...AND NOTHING blocks it:")
     add("    - You're currently wearing it -> keep")
     add("    - It's on your Keep List -> keep")
-    add("    - It's a quest item (auto-rule sweep only) -> keep")
+    add("    - It's a quest item (quality rules only) -> keep")
     add("    - It belongs to a saved equipment set ("
         .. onoff(DB.autoProtectEquipmentSets) .. ") -> keep")
-    add("    - It has a 'Chance on hit:' proc, and")
-    add("      (unless you've Alt+Right-Clicked 'Allow Sell' on that itemID)")
+    add("    - It's locked in your bag addon -> keep")
+    add("    - Its appearance isn't collected yet, and 'Keep gear with an")
+    add("      appearance you haven't collected' is " .. onoff(DB.protectUncollectedAppearances) .. " -> keep")
+    add("    - You can still trade or refund it, and 'Keep loot you can")
+    add("      still trade or refund' is " .. onoff(DB.protectTradeableLoot) .. " -> keep")
+    add("      (both unless it's on your Sell List or you chose 'Allow Sell')")
     add("    - It's an unlearned recipe, and")
     add("      'Keep unlearned recipes' is " .. onoff(DB.protectUnlearnedTomes) .. " -> keep")
     add("")

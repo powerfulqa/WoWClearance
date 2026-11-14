@@ -297,7 +297,7 @@ DeletionSettingsPanel:SetScript("OnShow", function(self)
             knownRecipeNote:SetWordWrap(true)
         end
         knownRecipeNote:SetText(
-            L["|cff888888Learned profession recipes with no vendor value (some low-rank Cooking recipes, low-level schematics). Needs 'Sell known recipes' on in Merchant Settings.|r"]
+            L["|cff888888Learned profession recipes with no vendor value (some low-rank Cooking recipes, low-level schematics). Needs 'Sell recipes you already know' on in Merchant Settings.|r"]
         )
 
         -- v2.44.4: announce-in-chat toggle. Gates the "WC just deleted /

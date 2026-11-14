@@ -364,7 +364,7 @@ function Comms.RunSelfTest()
         NS.PrintNicef(L["Sent a guild ping; waiting for it to echo back..."])
         NS.Delay(3, function()
             if not commtestEchoed then
-                NS.PrintNicef(L["Comms relay inconclusive: no echo in 3s. This core may not echo your own guild messages, or addon messages are filtered. Confirm with a second player."])
+                NS.PrintNicef(L["Comms relay inconclusive: no echo in 3s. The game may not echo your own guild messages, or addon messages are filtered. Confirm with a second player."])
             end
         end)
     else

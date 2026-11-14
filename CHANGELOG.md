@@ -35,6 +35,9 @@ The first public release.
   tooltips.
 - **Reporting bugs.** The Help panel now links to the issues page on
   GitHub.
+- **Help and wording tidy-up.** Out-of-date Help answers are corrected,
+  three tooltip labels gain a Help entry (new appearance, tradeable,
+  locked), and Current Rules lists the appearance and trade protections.
 - **Fix: colour rows on Item Highlighting.** Long labels no longer run
   under the colour swatches.
 

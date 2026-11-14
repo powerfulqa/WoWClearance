@@ -408,7 +408,7 @@ local PRESETS = {
     },
     power = {
         name = L["Power"],
-        desc = L["Turbo vendoring, deletes Delete-List items. Read the disconnect warning."],
+        desc = L["Turbo vendoring, and Delete Next is allowed. Read the disconnect warning."],
         answers = {
             speed = "turbo",
             fastLoot = "on",
@@ -1183,8 +1183,8 @@ local function buildPanel(self, content)
         lastAnchor = makeRadioGroup(content, sec5, "ilvlSurfaces", L["Q10. Show item levels on equipment slots?"], {
             { value = "none", label = L["Don't show item levels"] },
             { value = "bags", label = L["On bag slots only"] },
-            { value = "bagsPaperdoll", label = L["Bag slots + paperdoll / inspect"] },
-            { value = "everywhere", label = L["Bag slots + paperdoll + merchant frames"] },
+            { value = "bagsPaperdoll", label = L["Bag slots + character sheet / inspect"] },
+            { value = "everywhere", label = L["Bag slots + character sheet + merchant window"] },
         }, refresh)
 
         lastAnchor = makeRadioGroup(

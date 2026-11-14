@@ -110,7 +110,7 @@ local function WC_buildHelpEntries()
     {
         id = "slash-commands",
         q = L["What are the slash commands?"],
-        a = L["/wc opens the settings. /wc help prints the full command list. /wc sellinfo explains why a bag item will or won't sell. /wc loot opens the Loot Log window. /wc history shows what was sold/deleted and why. /wc bugreport opens a diagnostic snapshot. /wc clean finds items appearing on multiple lists. /wcdebug shows a bag scan summary."],
+        a = L["/wc opens the settings. The Main panel lists every command with a button to run it. /wc highlight turns all item highlighting on or off. /wc sellinfo explains why a bag item will or won't sell. /wc loot opens the Loot Log window. /wc history shows what was sold/deleted and why. /wc bugreport opens a diagnostic snapshot. /wc clean finds items appearing on multiple lists. /wcdebug shows a bag scan summary."],
         panel = nil,
     },
     {
@@ -128,7 +128,7 @@ local function WC_buildHelpEntries()
     {
         id = "stats-character-vs-account",
         q = L["Character view vs Account view in the Stats panel?"],
-        a = L["The toggle at the top of the Stats panel picks which totals to show. |cffb6ffb6Character|r shows just the currently logged-in character's lifetime totals - the original behaviour. |cffb6ffb6Account|r shows the same fields summed across every character on this account that has used WoWClearance.\n\nAccount totals start at zero on v2.38.1 install and count forward; older per-character history stays on each character's own Character view. The Account view's Best Gold/Hour ribbon names which character set the record.\n\n|cffffd870Reset Lifetime|r is view-aware: in Character view it clears just this character; in Account view it clears just the account ledger, leaving every character's own totals intact."],
+        a = L["The toggle at the top of the Stats panel picks which totals to show. |cffb6ffb6Character|r shows just the currently logged-in character's lifetime totals - the original behaviour. |cffb6ffb6Account|r shows the same fields summed across every character on this account that has used WoWClearance.\n\nAccount totals count from the date shown under the toggle; older history stays on each character's own Character view. The Account view's Best Gold/Hour ribbon names which character set the record.\n\n|cffffd870Reset Lifetime|r is view-aware: in Character view it clears just this character; in Account view it clears just the account ledger, leaving every character's own totals intact."],
         panel = "WoWClearanceOptionsStats",
     },
     {
@@ -212,7 +212,7 @@ local function WC_buildHelpEntries()
     {
         id = "tshoot-not-working",
         q = L["Why isn't the addon doing anything?"],
-        a = L["The most common cause is that the master Enable toggle got switched off (a right-click on the minimap button toggles it). When WoWClearance is disabled, it stops selling, looting, and annotating tooltips - but the |cffb6ffb6Sell-border tint|r on bag items is a separate setting, so the addon still |cffffd870looks|r active when it isn't. Three ways to turn it back on: tick the |cffb6ffb6Enable WoWClearance|r checkbox at the top of the panel below, right-click the WoWClearance minimap icon, or type |cffffff00/wc enable|r in chat. Use |cffffff00/wc status|r if you just want to check the current state."],
+        a = L["The most common cause is that the master Enable toggle got switched off (a right-click on the minimap button toggles it). When WoWClearance is disabled, it stops selling, looting, and annotating tooltips - but the |cffb6ffb6Sell-border tint|r on bag items is a separate setting, so the addon still |cffffd870looks|r active when it isn't. If it is on but nothing sells at vendors, check 'Sell items at vendors' in Merchant Settings. Three ways to turn the addon back on: tick the |cffb6ffb6Enable WoWClearance|r checkbox at the top of the panel below, right-click the WoWClearance minimap icon, or type |cffffff00/wc enable|r in chat. Use |cffffff00/wc status|r if you just want to check the current state."],
         panel = "WoWClearanceOptionsMain",
     },
     {
@@ -236,7 +236,7 @@ local function WC_buildHelpEntries()
     {
         id = "tshoot-upgrade-keep",
         q = L["Items keep appearing on the Keep List as 'Keep (upgrade)' that I want to sell."],
-        a = L["WoWClearance auto-adds items with a higher item level than what you're currently wearing in that slot, so you don't accidentally vendor a useful piece. Old entries (gear you've since replaced) clean up automatically. To turn off the auto-add entirely, untick 'Keep looted upgrades' in the panel below."],
+        a = L["WoWClearance auto-adds items with a higher item level than what you're currently wearing in that slot, so you don't accidentally vendor a useful piece. Old entries (gear you've since replaced) clean up automatically. To turn off the auto-add entirely, untick 'Keep upgrades found in bags' in the panel below."],
         panel = "WoWClearanceOptionsBlacklistSettings",
     },
     {
@@ -254,13 +254,13 @@ local function WC_buildHelpEntries()
     {
         id = "merchant-auto-sell",
         q = L["Does WoWClearance sell automatically, or do I click?"],
-        a = L["Automatically. The moment you open a merchant, it starts selling your junk and anything your rules mark 'Will Sell'. No clicking. Selling is paced by the sell-speed setting so it doesn't overload the vendor."],
+        a = L["Automatically. The moment you open a merchant, it starts selling your junk and anything your rules mark 'Will Sell'. No clicking. (Turn this off with 'Sell items at vendors' in Merchant Settings.) Selling is paced by the sell-speed setting so it doesn't overload the vendor."],
         panel = "WoWClearanceOptionsMerchant",
     },
     {
         id = "merchant-force-sell",
         q = L["How do I make it sell right now?"],
-        a = L["Just open an allowed merchant and it sells on its own. To trigger a pass by hand (say you changed a setting mid-visit), bind a key to 'Force sell at current merchant' under Key Bindings > WoWClearance. A merchant has to be open for it to do anything."],
+        a = L["Just open a merchant and it sells on its own. To trigger a pass by hand (say you changed a setting mid-visit), bind a key to 'Force sell at current merchant' under Key Bindings > WoWClearance. A merchant has to be open for it to do anything. It also sells when 'Sell items at vendors' is off."],
         panel = "WoWClearanceOptionsMerchant",
     },
     {
@@ -272,7 +272,7 @@ local function WC_buildHelpEntries()
     {
         id = "tshoot-bag-borders",
         q = L["The bag-slot border colors aren't showing."],
-        a = L["They're off by default. Tick 'Show borders' in the panel below, then turn on the categories you want colored (Delete, Keep, Account Sell, Character Sell, Junk, Rule). With a bag addon that sorts items into groups, items that will sell or be deleted also get their own \"WoWClearance: Sell\" and \"WoWClearance: Delete\" groups."],
+        a = L["They're off by default. Make sure 'Item highlighting' at the top of the panel below is on, tick 'Show borders', then turn on the categories you want colored (Delete, Keep, Account Sell, Character Sell, Junk, Rule). With a bag addon that sorts items into groups, items that will sell or be deleted also get their own \"WoWClearance: Sell\" and \"WoWClearance: Delete\" groups."],
         panel = "WoWClearanceOptionsCharacter",
     },
     {
@@ -296,7 +296,7 @@ local function WC_buildHelpEntries()
     {
         id = "bugreport-sections",
         q = L["What's in the /wc bugreport window?"],
-        a = L["Everything the addon knows about your current session that helps diagnose a report: Issue Summary flags at the top, current settings, sell rules, delete list preview with item names, recent auto-mark events, silent refusals (list adds that were blocked by cross-list conflicts), recent sold + recent deleted, toggles you changed this session, last-event timestamps, cache sizes, proc pairings shared this session (v2.53.0), and your loaded-addon list. Resize the window if the report is long. Ctrl+A then Ctrl+C to copy it for a bug report."],
+        a = L["Everything the addon knows about your current session that helps diagnose a report: Issue Summary flags at the top, current settings, sell rules, delete list preview with item names, recent auto-mark events, silent refusals (list adds that were blocked by cross-list conflicts), recent sold + recent deleted, toggles you changed this session, last-event timestamps, cache sizes, and your loaded-addon list. Resize the window if the report is long. Ctrl+A then Ctrl+C to copy it for a bug report."],
         panel = nil,
     },
     {
@@ -314,12 +314,12 @@ local function WC_buildHelpEntries()
     {
         id = "sell-list-vs-tome-protection",
         q = L["Why didn't my recipe on the Sell List actually sell?"],
-        a = L["Before v2.51.2 the recipe-protection HARD veto required BOTH Sell List entry AND Alt+Right-Click -> Allow Sell to release. Since v2.51.2, adding to the Sell List is enough on its own. If you're on v2.51.2 or later and a recipe on your Sell List still isn't selling, run /wc sellinfo on it: the trace will tell you which check is catching it (Delete List, Keep List, no vendor value, etc.)."],
+        a = L["Adding a recipe to the Sell List is enough to sell it, even with recipe protection on. If it still isn't selling, run /wc sellinfo on it: the trace tells you which check is catching it (Delete List, Keep List, no vendor value, and so on)."],
         panel = nil,
     },
     {
         id = "tshoot-keep-list-hides-process",
-        q = L["My herbs / ore aren't showing in Process Bags."],
+        q = L["An item I expect isn't showing in Process Bags."],
         a = L["Items on the Keep List are intentionally hidden from Process Bags' lists - the Keep List wins over everything, including bulk processing. If you've added an item to the Keep List (manually or by auto-protect rules), it won't appear here. Open the panel below to remove items from the Keep List and they'll show up in Process Bags again."],
         panel = "WoWClearanceOptionsBlacklist",
     },
@@ -398,19 +398,19 @@ local function WC_buildHelpEntries()
     {
         id = "gate-repair",
         q = L["Repair gear while selling"],
-        a = L["When on, WoWClearance pays to repair your gear at every merchant visit that has a repair option. Saves the manual click. Only repairs from your own gold by default; turn on 'Repair from guild bank' below to spend guild funds when available."],
+        a = L["When on, WoWClearance pays to repair your gear at every merchant visit that has a repair option. Saves the manual click. Only repairs from your own gold by default; turn on 'Pay from guild bank when possible' below to spend guild funds when available."],
         panel = "WoWClearanceOptionsMerchant",
     },
     {
         id = "gate-guild-bank-repair",
-        q = L["Repair from guild bank"],
+        q = L["Pay from guild bank when possible"],
         a = L["When on AND 'Repair gear while selling' is also on, WoWClearance prefers guild-bank funds for the repair (when you have guild-repair permission) and falls back to your own gold if the guild bank can't cover it. No effect when 'Repair gear while selling' is off."],
         panel = "WoWClearanceOptionsMerchant",
     },
     {
         id = "gate-keep-bags-open",
         q = L["Keep bags open after a vendor"],
-        a = L["When on, your bags stay open after WoWClearance finishes its sell + delete sweep at a merchant. Useful if you want to review what got sold or pick something up to buy back. When off, bags close on their own once the cycle finishes."],
+        a = L["When on, your bags stay open after WoWClearance finishes selling at a merchant. Useful if you want to review what got sold or pick something up to buy back. When off, bags close on their own once the cycle finishes."],
         panel = "WoWClearanceOptionsMerchant",
     },
     {
@@ -428,7 +428,7 @@ local function WC_buildHelpEntries()
     {
         id = "gate-equipped-never-sells",
         q = L["Currently-equipped items never sell"],
-        a = L["Even when on the Sell List, WoWClearance won't vendor anything you're currently wearing. Unequip first if you want it sold. Turn on 'Keep gear sets' if you also want gear from Blizzard's Equipment Manager protected."],
+        a = L["Even when on the Sell List, WoWClearance won't vendor anything you're currently wearing. Unequip first if you want it sold. Turn on 'Keep items in your saved equipment sets' in Keep Settings to protect gear from your saved sets too."],
         panel = "WoWClearanceOptionsBlacklistSettings",
     },
     {
@@ -440,13 +440,13 @@ local function WC_buildHelpEntries()
     {
         id = "gate-automark-known-recipes",
         q = L["Auto-mark unsellable known recipes for deletion"],
-        a = L["Off by default. Some soulbound recipes have no vendor price (some low-rank Cooking recipes, some Lockpicking / Skinning schematics), so the vendor refuses them and 'Sell known recipes' can't move them. Turn this on and learned recipes with no vendor price go onto your Delete List instead (one chat line per item). Needs 'Sell known recipes' on in Merchant Settings - this is a companion to it, for the vendor-refused ones. Recipes you don't know yet are never touched. Sellable recipes still sell normally. Keep List / equipped / quest / gear-set items stay safe."],
+        a = L["Off by default. Some soulbound recipes have no vendor price (some low-rank Cooking recipes, some Lockpicking / Skinning schematics), so the vendor refuses them and 'Sell recipes you already know' can't move them. Turn this on and learned recipes with no vendor price go onto your Delete List instead (one chat line per item). Needs 'Sell recipes you already know' on in Merchant Settings - this is a companion to it, for the vendor-refused ones. Recipes you don't know yet are never touched. Sellable recipes still sell normally. Keep List / equipped / quest / gear-set items stay safe."],
         panel = "WoWClearanceOptionsDeletionSettings",
     },
     {
         id = "gate-tome-recipe",
         q = L["Recipe protection"],
-        a = L["Plans, Schematics, Patterns, Recipes, and mount scrolls are protected from auto-sell so you don't accidentally vendor a learnable spell. Alt+Right-Click 'Allow Sell' to override. 'Protect all recipes' decides whether already-learned items are also protected (useful for saving spares for the auction house or alts)."],
+        a = L["Plans, Schematics, Patterns, Recipes, and mount scrolls are protected from auto-sell so you don't accidentally vendor a learnable spell. Alt+Right-Click 'Allow Sell' to override. 'Keep them even after you learn them' decides whether already-learned items are also protected (useful for saving spares for the auction house or alts)."],
         panel = "WoWClearanceOptionsBlacklistSettings",
     },
     {
@@ -518,7 +518,7 @@ local function WC_buildHelpEntries()
     {
         id = "label-keep-auto",
         q = L["Keep (auto)"],
-        a = L["An older auto-tag from before WoWClearance v2.12.0. Works the same as the more specific 'Keep (equipped/upgrade/gear set)' tags, but the exact origin was lost during an addon upgrade."],
+        a = L["An older automatic tag. Works the same as the more specific 'Keep (equipped/upgrade/gear set)' tags; the exact reason was not recorded."],
         panel = "WoWClearanceOptionsBlacklist",
     },
     {
@@ -535,9 +535,26 @@ local function WC_buildHelpEntries()
     },
     {
         id = "label-new-tome-recipe",
-        q = L["Keep (new Recipe) / Keep (new Recipe)"],
+        q = L["Keep (unlearned recipe)"],
         a = L["A recipe you haven't learned yet. Protected so you can learn it - just right-click the item. Turn off recipe protection in Keep Settings if you'd rather sell them."],
         panel = "WoWClearanceOptionsBlacklistSettings",
+    },
+    {
+        id = "label-keep-appearance",
+        q = L["Keep (new appearance)"],
+        a = L["Gear with a look you haven't collected yet. Kept by 'Keep gear with an appearance you haven't collected' in Keep Settings. Your Sell List or Alt+Right-Click 'Allow Sell' still sells it."],
+        panel = "WoWClearanceOptionsBlacklistSettings",
+    },
+    {
+        id = "label-keep-tradeable",
+        q = L["Keep (tradeable)"],
+        a = L["Loot you can still trade to your group or refund at the vendor. Kept by 'Keep loot you can still trade or refund' in Keep Settings until that window closes."],
+        panel = "WoWClearanceOptionsBlacklistSettings",
+    },
+    {
+        id = "label-keep-locked",
+        q = L["Keep (locked)"],
+        a = L["You locked this item in your bag addon ('never sold or disenchanted'). WoWClearance treats it like a Keep List item: never sold, deleted or processed. Unlock it there to release it."],
     },
     {
         id = "label-tome-have",
@@ -572,7 +589,7 @@ local function WC_buildHelpEntries()
     {
         id = "label-will-sell-junk",
         q = L["Will Sell (junk)"],
-        a = L["Grey item with a vendor price. Always sells regardless of other settings."],
+        a = L["Grey item with a vendor price. Sells at any vendor unless you turn off 'Sell grey items' in Merchant Settings."],
         panel = nil,
     },
     {
@@ -626,7 +643,7 @@ local function WC_buildHelpEntries()
     {
         id = "process-disenchant",
         q = L["Disenchant mode"],
-        a = L["Requires the Enchanting profession. The panel lists eligible Uncommon (Green) and Rare (Blue) Weapons / Armor. Click the Cast button to disenchant the current item into dust, essences, and shards; click again for the next one. Items without Enchanting eligibility are skipped."],
+        a = L["Requires the Enchanting profession. The panel lists eligible weapons and armor, up to the rarity you pick in 'Disenchant up to'. Click the Cast button to disenchant the current item into dust, essences, and shards; click again for the next one. Items without Enchanting eligibility are skipped."],
         panel = "WoWClearanceOptionsProcessBags",
     },
     {
@@ -720,8 +737,8 @@ local function WC_buildHelpEntries()
     },
     {
         id = "bug-dm-vs-thread",
-        q = L["Direct message vs. the thread"],
-        a = L["Post in the thread - other players hit the same bugs and the public answer helps everyone."],
+        q = L["Message me, or open an issue?"],
+        a = L["Open an issue on GitHub - other players hit the same bugs and the public answer helps everyone."],
         panel = nil,
     },
     {

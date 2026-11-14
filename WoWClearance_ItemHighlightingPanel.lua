@@ -195,7 +195,7 @@ CharPanel:SetScript("OnShow", function(self)
             { key = "keep", label = L["Keep List (white)"] },
             { key = "accountSell", label = L["Account Sell List (green)"] },
             { key = "charSell", label = L["Character Sell List (cyan)"] },
-            { key = "junk", label = L["Junk - greys (low-alpha grey)"] },
+            { key = "junk", label = L["Junk - greys (faint grey)"] },
             { key = "rule", label = L["Quality rule match (gold)"] },
         }
         local catSwatchUpdaters = {}

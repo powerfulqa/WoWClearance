@@ -1621,7 +1621,7 @@ function WC_compCache.describeSellability(bag, slot)
         local delEligible, delToken = NS.Decision.deleteEligible(ctx)
         if delEligible then
             willDelete = true
-            step("deleteListVerdict", true, L["WILL DELETE - on Delete List, Enable Deletion is on"])
+            step("deleteListVerdict", true, L["WILL DELETE - on Delete List, and deleting is allowed"])
         elseif delToken == "keepList" then
             step("deleteListVerdict", true, L["on Delete List but also on your Keep List - Keep List wins, not deleted"])
         elseif delToken == "sellList" then
@@ -1635,7 +1635,7 @@ function WC_compCache.describeSellability(bag, slot)
         step(
             "deleteListVerdict",
             true,
-            L["on Delete List but Enable Deletion is OFF - falling through to sell rules"]
+            L["on Delete List but 'Allow items to be deleted' is off - sell rules apply instead"]
         )
     else
         step("deleteListVerdict", true, L["not on Delete List"])
@@ -1728,7 +1728,7 @@ function WC_compCache.describeSellability(bag, slot)
     if hasSellPrice and ctx.sellKnownRecipes then
         local isTome = ctx.isTome()
         if not isTome then
-            step("knownRecipeRule", false, L["not detected as a recipe (GetItemInfo class + 'Use: Teaches' tooltip scan both failed)"])
+            step("knownRecipeRule", false, L["not a recipe"])
         else
             local kind = ctx.tomeKind()
             if kind ~= "Recipe" then
@@ -1852,7 +1852,7 @@ function WC_compCache.describeSellability(bag, slot)
             step("tomeProtection", true, L["recipe, but you Allow-Sold this one"])
         elseif ctx.protectAllTomes then
             tomeProtected = true
-            step("tomeProtection", false, L["Kept - 'protect all recipes' is on. Tip: add this item to the Sell List, turn off 'Protect all recipes' in Merchant Settings, or Alt+Right-Click -> Allow Sell to override for this item."])
+            step("tomeProtection", false, L["Kept - 'Keep them even after you learn them' is on. Tip: add this item to the Sell List, turn that off in Keep Settings, or Alt+Right-Click -> Allow Sell to override for this item."])
         elseif ctx.protectUnlearnedTomes and not ctx.knowsTomeSpell() then
             tomeProtected = true
             step("tomeProtection", false, L["Kept - unlearned recipe"])

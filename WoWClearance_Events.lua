@@ -4736,7 +4736,7 @@ function WC_compCache.sellReasonForSignal(signal, quality, rule)
     elseif signal == "recipe" then
         return L["A profession recipe this character has already learned - Sell Known Recipes vendored the duplicate."]
     elseif signal == "junk" then
-        return L["Grey (poor) quality with a vendor price - grey junk is always auto-sold."]
+        return L["Junk with a vendor price - junk sells at any vendor."]
     end
     -- Quality-rule case: spell out the item-level decision + any bind filter.
     local bindNote = ""
@@ -6808,7 +6808,7 @@ SlashCmdList["WOWCLEARANCE"] = function(msg)
             PrintNice(result)
         elseif sub == "list" or sub == "" then
             EnsureDB()
-            PrintNice(L["Sell List Profiles:"])
+            PrintNice(L["List Profiles:"])
             local names = {}
             for name in pairs(DB.whitelistProfiles) do
                 if type(name) == "string" then
@@ -6822,7 +6822,7 @@ SlashCmdList["WOWCLEARANCE"] = function(msg)
                 local wlCount = WC_CountItems(DB.whitelistProfiles[names[i]])
                 local blCount = DB.blacklistProfiles[names[i]] and WC_CountItems(DB.blacklistProfiles[names[i]]) or 0
                 local tag = (names[i] == DB.activeProfileName) and L[" |cff00ff00(active)|r"] or ""
-                PrintNicef(L["  |cffffff00%s|r - %d whitelist, %d blacklist%s"], names[i], wlCount, blCount, tag)
+                PrintNicef(L["  |cffffff00%s|r - %d sell, %d keep%s"], names[i], wlCount, blCount, tag)
             end
         else
             PrintNice(L["Usage: /wc profile save|load|delete|list <name>"])
@@ -7004,7 +7004,7 @@ SlashCmdList["WOWCLEARANCE"] = function(msg)
             if NS.SetMinimapButtonVisible then
                 NS.SetMinimapButtonVisible(false)
             end
-            PrintNice(L["|cffffb84dMinimap button hidden. Use /wc, the LDB launcher, or your keybinding.|r"])
+            PrintNice(L["|cffffb84dMinimap button hidden. Use /wc, the addon list button, or your key binding.|r"])
         elseif sub == "reset" then
             DB.minimapButtonAngle = NS.MINIMAP_DEFAULT_ANGLE or 190
             if NS.UpdateMinimapPos then
@@ -7191,7 +7191,7 @@ SlashCmdList["WOWCLEARANCE"] = function(msg)
         -- response.
         PrintNice(L["|cffffff00WoWClearance|r: type |cffffff00/wc|r to open settings."])
         PrintNice(
-            L["|cffaaaaaaThe Slash Commands section there has every command with click-to-run buttons. The Help panel in Interface Options has the full FAQ.|r"]
+            L["|cffaaaaaaThe Slash Commands section there has every command with click-to-run buttons. The Help page there has the full FAQ.|r"]
         )
         return
     end
@@ -7274,7 +7274,7 @@ SlashCmdList["WOWCLEARANCE"] = function(msg)
         if rest == "apply" and #conflicts > 0 then
             local removed = WC_ApplyCleanResolution(conflicts)
             PrintNicef(
-                L["Removed |cffffff00%d|r duplicate entr%s (precedence: blacklist > deleteList > whitelist)."],
+                L["Removed |cffffff00%d|r duplicate entr%s (Keep List wins, then Delete List, then Sell List)."],
                 removed,
                 removed == 1 and "y" or "ies"
             )
@@ -7287,7 +7287,7 @@ SlashCmdList["WOWCLEARANCE"] = function(msg)
                 bp.listUI:Refresh()
             end
         elseif #conflicts > 0 then
-            PrintNice(L["Run |cffffff00/wc clean apply|r to auto-resolve (blacklist > deleteList > whitelist)."])
+            PrintNice(L["Run |cffffff00/wc clean apply|r to fix them (Keep List wins, then Delete List, then Sell List)."])
         end
         return
     end
@@ -7318,7 +7318,7 @@ SlashCmdList["WCDEBUG"] = function()
         wlCount = wlCount + 1
     end
     if wlCount == 0 then
-        PrintNice(L["  (whitelist is empty)"])
+        PrintNice(L["  (Sell List is empty)"])
     end
 
     -- Scan bags and check which items would be sold. v2.13.4: routes

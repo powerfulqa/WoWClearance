@@ -900,7 +900,7 @@ local function BuildMainPanel(panel, content)
         descLabel2:SetWordWrap(true)
     end
     descLabel2:SetText(
-        L["Out of the box it sells your junk and old gear when you visit a merchant, keeps your upgrades, and never touches anything important.\n\n"]
+        L["Out of the box it sells your junk and old gear when you visit a merchant, keeps the gear you wear, and never touches anything important.\n\n"]
             .. L["Want more control?\n"]
             .. L["  |cffb6ffb6Sell List|r - items you want sold every time.\n"]
             .. L["  |cffb6ffb6Keep List|r - items the addon should never touch.\n"]

@@ -4697,7 +4697,7 @@ do
 
             check(
                 "Test 77: /wc help mentions the Help panel",
-                eventsSrc:find("Help panel in Interface Options") ~= nil,
+                eventsSrc:find("The Help page there has the full FAQ") ~= nil,
                 "The /wc help slash-command output must include a pointer to the new Help panel so players know it exists"
             )
         end
