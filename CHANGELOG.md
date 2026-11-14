@@ -6,6 +6,12 @@ release history is in [its own changelog](https://github.com/powerfulqa/EbonClea
 Version numbers there belong to that project and do not continue into
 this one.
 
+### v0.8.1
+
+- **Fix: Process Next did nothing.** Pressing Process Next in Process
+  Bags (the button or its key) cast nothing, for Pick Lock, Disenchant
+  and Convert alike. It works again.
+
 ### v0.8.0
 
 The first public release.

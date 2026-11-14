@@ -6172,6 +6172,26 @@ do
 end
 
 -- ---------------------------------------------------------------------------
+-- Test 145: the Process Next secure button fires on the up click.
+-- ---------------------------------------------------------------------------
+-- It registers UP clicks only. On this client a secure action button acts on
+-- the DOWN click when "cast on key down" is on (the default), so without
+-- useOnKeyDown = false every press was dropped and Process Next did nothing.
+do
+    local f = io.open("WoWClearance_ProcessBagsPanel.lua", "r")
+    local src = f and f:read("*a") or ""
+    if f then
+        f:close()
+    end
+    check(
+        "Test 145: Process Next button pins useOnKeyDown to false",
+        src:find('castBtn:RegisterForClicks%("AnyUp"%)') ~= nil
+            and src:find('castBtn:SetAttribute%("useOnKeyDown", false%)') ~= nil,
+        "WoWClearanceProcessCastBtn registers up clicks only, so it must set useOnKeyDown = false or the secure action never fires"
+    )
+end
+
+-- ---------------------------------------------------------------------------
 -- Test 121: Quickstart "(default)" labels must match the actual fresh-install
 -- default that snapshotAnswersFromDB would produce (v2.59.6, Qvintus report).
 -- ---------------------------------------------------------------------------

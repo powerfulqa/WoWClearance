@@ -638,7 +638,13 @@ real gap, not a capture artefact.
 - **Secure code.** No `WrapScript` / `RunAttribute` /
   `RegisterStateDriver` / `initialConfigFunction` / `_onstate-*`. The
   three `SecureActionButtonTemplate` buttons only set `type` and
-  `macrotext` attributes, which still works. (Forever has a Blizzard bug
+  `macrotext` attributes, which still works.
+  **Corrected 2026-11-14 (measured in game):** the attributes work, but
+  the button did not. A secure action button acts on the DOWN click when
+  "cast on key down" is on (the default), and ours registers UP clicks
+  only, so Process Next did nothing until v0.8.1 set `useOnKeyDown` to
+  false on it. A secure button that registers one click direction must
+  pin `useOnKeyDown` to match. (Forever has a Blizzard bug
   where secure snippets cannot compile; it does not affect us.)
 - **No version-check trap.** The `select(4, GetBuildInfo()) >= 100000`
   idiom that breaks most Retail addons on Forever appears nowhere.

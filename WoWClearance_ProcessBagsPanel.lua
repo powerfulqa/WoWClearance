@@ -1210,6 +1210,16 @@ ProcessBagsPanel:SetScript("OnShow", function(self)
         castBtn:SetAttribute("type", "macro")
         castBtn:SetAttribute("macrotext", "")
         castBtn:RegisterForClicks("AnyUp")
+        -- WC-TRAP: do not remove. On this client a secure action button
+        -- fires its action on the DOWN click whenever the player's "cast on
+        -- key down" setting is on (the default; SecureActionButton_OnClick
+        -- reads useOnKeyDown, else the ActionButtonUseKeyDown cvar). This
+        -- button only registers UP clicks, so without this attribute every
+        -- click and key press reached the handler as an up click and was
+        -- dropped: Process Next did nothing at all. Pinning it to false makes
+        -- the action fire on the up click whatever that setting is. Pinned by
+        -- Test 145 in tests/test_perf_guardrails.lua.
+        castBtn:SetAttribute("useOnKeyDown", false)
         castBtn:SetText(L["Process Next"])
         self.castBtn = castBtn
         self.castBtnLabel = castBtn:GetFontString()
