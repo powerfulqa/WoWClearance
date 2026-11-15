@@ -7722,6 +7722,16 @@ f:SetScript("OnEvent", function(self, event, ...)
                 if NS.LogRecentProcessed then
                     NS.LogRecentProcessed(pending)
                 end
+                -- Remember the picked box by GUID so canPickLock drops it
+                -- at once, whatever the tooltip still says. The 10 s
+                -- window stops a stale capture (a click whose cast failed)
+                -- from marking a box that a later manual cast did not hit.
+                if pending.mode == "Lockpick" and GetTime() - (pending.startedAt or 0) < 10 then
+                    local loc = NS.Decision.slotLocation(pending.bag, pending.slot)
+                    if C_Item.DoesItemExist(loc) then
+                        WC_compCache.pickedLockGUIDs[C_Item.GetItemGUID(loc)] = true
+                    end
+                end
                 WC_compCache.pendingProcessCast = nil
             end
         end

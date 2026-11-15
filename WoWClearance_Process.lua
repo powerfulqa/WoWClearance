@@ -374,6 +374,10 @@ end
 -- exclude locked containers from the auto-open driver, so an item
 -- that fails WC_IsOpenable's LOCKED gate is exactly the one that
 -- belongs in Lockpick mode.
+-- Item GUIDs of boxes the Process button has picked this session; written by
+-- the UNIT_SPELLCAST_SUCCEEDED branch in the event hub.
+WC_compCache.pickedLockGUIDs = {}
+
 function WC_compCache.canPickLock(bag, slot)
     if not WC_compCache.spellKnown(WC_compCache.SPELL_PICK_LOCK) then
         return false
@@ -392,6 +396,15 @@ function WC_compCache.canPickLock(bag, slot)
     -- and including them would cause the cursor to jitter during the
     -- cast resolution window (same locked-slot story as Mill/Prospect).
     if locked then
+        return false
+    end
+    -- A box the Process button already picked this session. The tooltip can
+    -- still carry the LOCKED line when the rearm runs right after the cast,
+    -- which left the cursor on the opened box and made the next press a
+    -- no-op. The cast succeeding on this exact copy is definitive, and the
+    -- GUID follows the copy if it is moved to another slot.
+    local loc = NS.Decision.slotLocation(bag, slot)
+    if C_Item.DoesItemExist(loc) and WC_compCache.pickedLockGUIDs[C_Item.GetItemGUID(loc)] then
         return false
     end
     -- v2.38.3: SetOwner-before-SetBagItem via the shared helper. See

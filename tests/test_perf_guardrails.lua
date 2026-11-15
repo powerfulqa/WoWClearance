@@ -310,6 +310,14 @@ do
           hasNameConst)
     check("WC_compCache.canPickLock helper is defined",
           hasHelper)
+    -- A picked box must leave the queue by GUID, not wait for the tooltip.
+    local body = src:match("function WC_compCache%.canPickLock%(.-\nend") or ""
+    local guidAt = body:find("pickedLockGUIDs%[C_Item%.GetItemGUID%(loc%)%]")
+    local scanAt = body:find("scanBagItem")
+    check("canPickLock rejects an already-picked box by GUID before the tooltip scan",
+          guidAt ~= nil and scanAt ~= nil and guidAt < scanAt)
+    check("a successful Lockpick cast records the box GUID",
+          src:find('pending%.mode == "Lockpick".-pickedLockGUIDs%[C_Item%.GetItemGUID%(loc%)%] = true') ~= nil)
 end
 
 -- ---------------------------------------------------------------------------

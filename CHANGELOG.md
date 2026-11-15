@@ -6,6 +6,14 @@ release history is in [its own changelog](https://github.com/powerfulqa/EbonClea
 Version numbers there belong to that project and do not continue into
 this one.
 
+### v0.8.5
+
+A Process Bags fix for rogues.
+
+- **Process Next moves on after a Pick Lock.** After you pick a lockbox,
+  the selection now drops to the next box. Before, it could stay on the
+  box you had opened, so the next press did nothing.
+
 ### v0.8.4
 
 A licence change. No changes to how the addon works.
