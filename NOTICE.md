@@ -96,10 +96,12 @@ against Blizzard APIs.
 
 ## Source-available licence pattern
 
-WoWClearance ships under a custom source-available attribution licence,
-inherited from EbonClearance and restated for this fork. The structural
-shape (Grant / Attribution / No-Rebrand / Forks / Bundling / No-Warranty
-/ Termination / Severability) follows similar source-available licences
+Releases up to v0.8.3 shipped under a custom source-available attribution
+licence, inherited from EbonClearance and restated for this fork. Later
+releases ship under version 2 of WoWClearance's own licence, which no
+longer allows forks or shared changes. The structural shape both
+versions keep (Grant / Attribution / No-Rebrand / No-Warranty /
+Termination / Severability) follows similar source-available licences
 that have appeared in the WoW addon ecosystem before it. Neither project
 claims the licence structure is original; it was adopted because it is
 the right shape for the same anti-rebrand pressure other addons are
@@ -147,6 +149,8 @@ for the convention and how to verify the value.
 - **Competitive-timeline claims**: none. Those in EbonClearance's NOTICE
   concern the 3.3.5a niche and are not restated here.
 
-If you are reading this file in a derivative addon's source tree, that
-addon is required by WoWClearance's [LICENSE](LICENSE) to preserve this
-file in full and link to https://github.com/powerfulqa/WoWClearance.
+If you are reading this file in a derivative addon's source tree: a
+derivative of a release up to v0.8.3 is required by that release's
+licence to keep the attribution and link to
+https://github.com/powerfulqa/WoWClearance. Later releases do not allow
+derivatives to be shared at all; see [LICENSE](LICENSE).

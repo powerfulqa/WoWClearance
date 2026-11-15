@@ -55,7 +55,7 @@ internet tutorial disagree, follow the guide.
    `WoWClearance_ToggleLootLog`), the addon-compartment handler named in
    the `.toc` (`WoWClearance_OnAddonCompartmentClick`, in
    `WoWClearance_Minimap.lua`), and the provenance globals required by
-   `LICENSE` §2 (`WOWCLEARANCE_IDENT`, `WOWCLEARANCE_AUTHOR`,
+   `LICENSE` §5 (`WOWCLEARANCE_IDENT`, `WOWCLEARANCE_AUTHOR`,
    `WOWCLEARANCE_ORIGIN`, `__WoWClearance_origin`,
    `__WoWClearance_author`, `__WoWClearance_watermark`).
 4. **Any state machine uses named constants, never raw strings.** The
@@ -83,12 +83,12 @@ internet tutorial disagree, follow the guide.
     name (e.g. `[CreateListUI](../WoWClearance_ListWidget.lua)`) and let readers
     `grep` for the symbol. Line numbers shift on every refactor; symbol
     names don't.
-12. **Do not remove attribution markers.** `LICENSE` §2 lists five
-    things every redistribution must preserve: the `## Author:` TOC
+12. **Do not remove attribution markers.** `LICENSE` §5 lists five
+    things every copy must keep: the `## Author:` TOC
     line, the file-header comment block at the top of
     `WoWClearance_Core.lua` (the first file the `.toc` loads), the GUI
     byline, the `WOWCLEARANCE_*` / `__WoWClearance_*` provenance
-    globals, and the `LICENSE` file in full. If a refactor would touch
+    globals, and the `LICENSE` and `AGENTS.md` files in full. If a refactor would touch
     any of those, leave them alone or update them with care - never
     delete.
 13. **The `WoWClearance_Events.lua` main chunk is at Lua 5.1's
@@ -111,7 +111,7 @@ measure everything else.
 ## Interface: 16001                                # WoW: Forever
 ## Title: ...                                      # colour codes allowed; version badge rewritten by CI
 ## Notes: ...
-## Author: ...                                     # required by LICENSE §2(a)
+## Author: ...                                     # required by LICENSE §5(a)
 ## X-Website: https://github.com/powerfulqa/WoWClearance
 ## Version: ...                                    # rewritten by the release workflow
 ## SavedVariables: WoWClearanceDB, WoWClearanceAccountDB
@@ -248,7 +248,7 @@ The `.toc` is the load-order source of truth. Current order (36 files: the 34 nu
 
 | # | File | Role |
 |---|------|------|
-| 1 | `WoWClearance_Core.lua` | Provenance globals, `WC_Fingerprint`, `NS.IsInSet`, the `WC_compCache` table (`NS.compCache`). Loads first; depends on nothing. Carries the LICENSE §2(b) header block. |
+| 1 | `WoWClearance_Core.lua` | Provenance globals, `WC_Fingerprint`, `NS.IsInSet`, the `WC_compCache` table (`NS.compCache`). Loads first; depends on nothing. Carries the LICENSE §5(b) header block. |
 | 2 | `WoWClearance_Decision.lua` | `NS.Decision`: the pure sell / delete decision core plus its two adapters and `Decision.slotLocation`. |
 | 3 | `WoWClearance_Locale.lua` | `NS.L`, an English passthrough. Must precede any file that binds `local L = NS.L` at its main chunk. |
 | 4 | `WoWClearance_Protection.lua` | Detection helpers: tome / Resilience marker scan, quest-item and appearance / tradeable predicates. |
@@ -2017,10 +2017,10 @@ Convention for future agents and contributors:
 - If we ever need a per-export-type fingerprint (profiles, settings,
   etc.), reuse `WC_Fingerprint` rather than introducing a second
   hash function. One salt, one helper, one mechanism.
-- Section 2(d) of the LICENSE lists `__WoWClearance_watermark`
+- Section 5(d) of the LICENSE lists `__WoWClearance_watermark`
   alongside the other provenance globals as required-to-preserve in
-  derivatives. Adding a new provenance global means updating
-  LICENSE 2(d) and `NOTICE.md`.
+  every copy. Adding a new provenance global means updating
+  LICENSE 5(d), `AGENTS.md` and `NOTICE.md`.
 
 The convergent prior-art story for the broader provenance pattern
 (`__<addon>_origin` / `__<addon>_author`) is documented in
@@ -2041,7 +2041,7 @@ established still holds:
   reassigned by the owner.
 - **File-scope calls need their provider loaded first** (see the note
   under "File layout"). Calls made inside functions resolve at call time.
-- **The LICENSE section 2(b) header block lives on `WoWClearance_Core.lua`.**
+- **The LICENSE section 5(b) header block lives on `WoWClearance_Core.lua`.**
 - **The static test suites read every file the `.toc` lists**, so a new
   file is covered without touching the tests.
 - **Do not mix feature work into a move-only refactor commit.**

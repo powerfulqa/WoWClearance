@@ -152,4 +152,4 @@ AI coding tools: read [AGENTS.md](AGENTS.md) first.
 
 ## Licence
 
-WoWClearance is source-available under its own attribution licence. You may use it, change it and share it, including in addon packs, as long as the author credit, the in-game byline and the `LICENSE` file stay intact and you do not rebrand it as your own work. Forks under a new name are welcome with attribution kept. The [LICENSE](LICENSE) file has the full terms.
+WoWClearance is source-available under its own licence. You may use it, pass on untouched copies (addon packs included) and change your own copy for your own use. You may not share a changed copy, publish a fork or reuse its code in another addon; send fixes and features as pull requests instead. The author credit, the in-game byline and the `LICENSE` file must stay intact. Releases up to v0.8.3 stay under the earlier attribution licence. The [LICENSE](LICENSE) file has the full terms.

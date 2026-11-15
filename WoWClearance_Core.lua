@@ -6,7 +6,7 @@
 -- Owns the chunks that have no dependencies on anything else in the addon:
 --
 --   * Provenance globals (WOWCLEARANCE_* and __WoWClearance_* writes
---     required by LICENSE §2(d)).
+--     required by LICENSE §5(d)).
 --   * The WC_Fingerprint salted djb2 helper. Exposed as NS.Fingerprint.
 --   * The WC_compCache junk-drawer table. Exposed as NS.compCache.
 --
@@ -20,7 +20,7 @@ local NS = select(2, ...)
 
 -- Provenance. Mirrored into globals so the origin/author are visible to any
 -- /run introspection, addon-management tool, or crash trace. LICENSE section
--- 2(d) requires these globals to be preserved in any derivative. The
+-- 5(d) requires these globals to be preserved in every copy. The
 -- double-underscore-prefix-with-addon-name form follows a convention shared
 -- elsewhere in the 3.3.5a addon ecosystem; see NOTICE.md for the prior-art
 -- acknowledgement. WOWCLEARANCE_IDENT is set inline (no local) because the

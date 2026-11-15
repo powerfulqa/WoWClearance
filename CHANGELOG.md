@@ -6,6 +6,23 @@ release history is in [its own changelog](https://github.com/powerfulqa/EbonClea
 Version numbers there belong to that project and do not continue into
 this one.
 
+### v0.8.4
+
+A licence change. No changes to how the addon works.
+
+- **New licence: Source-Available Licence, version 2.** You may still
+  use WoWClearance freely, pass on untouched copies (addon packs
+  included) and change your own copy for your own use. You may no longer
+  share a changed copy, publish a fork or reuse its code in another
+  addon. Send fixes and features as pull requests instead.
+- **Credits stay in every copy.** The author line, the in-game byline,
+  the provenance globals, `LICENSE` and `AGENTS.md` must stay intact,
+  private copies included.
+- **Earlier releases are not affected.** v0.8.3 and before stay under
+  the earlier attribution licence.
+- `AGENTS.md`, `README.md`, `NOTICE.md` and the contributor docs now
+  match the new terms.
+
 ### v0.8.3
 
 A cleanup release from a full audit of the addon. Fixes only.

@@ -374,7 +374,7 @@ Cross-file references resolve at call time via `NS.foo` table-index
 lookup, so load order between feature files doesn't matter (Core loads
 first because it owns the namespace shape and the EnsureDB migrations).
 Tests stay whole-codebase: the three invariant test files concatenate
-the split files at test time. LICENSE §2(b)'s file-header attribution
+the split files at test time. LICENSE §5(b)'s file-header attribution
 block lives on `WoWClearance_Core.lua` (loaded first per the .toc).
 
 ---
