@@ -91,6 +91,11 @@ ok("one reply when opted in", #sent == 1)
 ok("reply is GDAT", sent[1] and sent[1].t == "GDAT")
 ok("reply is a whisper to requester", sent[1] and sent[1].channel == "WHISPER" and sent[1].target == "Other")
 
+-- a GREQ whispered by a stranger (not guild/group) produces no reply
+clearSent()
+handlers.GREQ("", "Other", "WHISPER")
+ok("no reply to a whispered request", #sent == 0)
+
 -- a GREQ that appears to come from ourselves produces no reply
 clearSent()
 handlers.GREQ("", "Self Surname", "GUILD")

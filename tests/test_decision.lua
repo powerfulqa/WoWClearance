@@ -267,6 +267,12 @@ check("Sell List releases the appearance veto",
     sellsAs(gearCtx({ protectUncollectedAppearances = true, uncollectedAppearance = thunkTrue, whitelistedChar = true }), "whitelist_char"))
 check("Allow Sell releases the appearance veto",
     sellsAs(gearCtx({ protectUncollectedAppearances = true, uncollectedAppearance = thunkTrue, allowedItem = true }), "quality"))
+check("a host junk mark releases the appearance veto (rule also matches)",
+    sellsAs(gearCtx({ protectUncollectedAppearances = true, uncollectedAppearance = thunkTrue, hostMarkedJunk = true }), "junk"))
+check("a host junk mark releases the tradeable veto (rule also matches)",
+    sellsAs(gearCtx({ protectTradeableLoot = true, tradeable = thunkTrue, hostMarkedJunk = true }), "junk"))
+check("a host junk mark releases the tome veto (rule also matches)",
+    sellsAs(tomeCtx({ protectAllTomes = true, hostMarkedJunk = true }), "junk"))
 check("tradeable loot keeps rule-matched gear",
     keepsAs(gearCtx({ protectTradeableLoot = true, tradeable = thunkTrue }), "tradeable"))
 check("Sell List releases the tradeable veto",

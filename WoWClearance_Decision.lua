@@ -170,8 +170,12 @@ function Decision.sell(ctx)
     -- List is user intent, including the both-signals case), recipePass
     -- (Sell Known Recipes carve-out), per-item Allow Sell. WC-TRAP: this
     -- is the condition shape all three mirrors must share; from Stage 2
-    -- onward they render from this core.
+    -- onward they render from this core. A junk mark from the host bag UI
+    -- (isJunk above grey) is explicit intent too, so it also releases:
+    -- without that, enabling a quality rule made a junk-marked item stop
+    -- selling.
     if qualityPass
+        and not isJunk
         and not whitelistPass
         and not recipePass
         and (ctx.protectAllTomes or ctx.protectUnlearnedTomes)
@@ -187,10 +191,10 @@ function Decision.sell(ctx)
     end
 
     -- Forever protections (v0.6.0). Same release shape as the tome veto:
-    -- they stop the AUTO rules only. A Sell List entry or Allow Sell is
-    -- explicit intent and still sells; greys (isJunk) are never reached
-    -- here because the quality rules only cover quality 1-4.
-    if qualityPass and not whitelistPass and not recipePass and not ctx.allowedItem then
+    -- they stop the AUTO rules only. A Sell List entry, Allow Sell or a
+    -- host junk mark is explicit intent and still sells. (Greys never
+    -- reach here: the quality rules only cover quality 1-4.)
+    if qualityPass and not isJunk and not whitelistPass and not recipePass and not ctx.allowedItem then
         if ctx.protectUncollectedAppearances and ctx.uncollectedAppearance() then
             return "keep", "appearance"
         end

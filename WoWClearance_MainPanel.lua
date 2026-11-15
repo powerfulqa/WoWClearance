@@ -183,43 +183,24 @@ end
 -- value so sub-second extrapolation doesn't produce absurd numbers right
 -- after /reload. The best line shows the record + zone + when context.
 -- See EbonClearance's docs/specs/2026-05-26-gph-stats-design.md.
-local function WC_RefreshGPHRows(panel, view, src, DB, ADB)
+-- Session rate + best-record stamp. Returns the session copper/hour, or
+-- nil in the first 10 s. Also called by the hub after a vendor run and on
+-- looted coin, so a record is kept with the Stats panel closed (it used to
+-- be stamped only while a panel repainted).
+function NS.StampBestGPH()
+    local DB, ADB = NS.DB, NS.ADB
     local startedAt = NS.session.startedAt or 0
-    local now = GetTime()
-    local elapsed = (startedAt > 0) and (now - startedAt) or 0
-    local function humanDuration(secs)
-        secs = math.floor(secs)
-        if secs < 60 then
-            return string.format("%ds", secs)
-        elseif secs < 3600 then
-            return string.format("%dm %ds", math.floor(secs / 60), secs % 60)
-        end
-        local h = math.floor(secs / 3600)
-        local m = math.floor((secs % 3600) / 60)
-        local s = secs % 60
-        return string.format("%dh %dm %ds", h, m, s)
+    local elapsed = (startedAt > 0) and (GetTime() - startedAt) or 0
+    -- 10-second floor: a shorter window extrapolates to absurd rates.
+    if not (DB and elapsed >= 10) then
+        return nil
     end
-    local sessionGPH
-    if elapsed >= 10 then
-        -- v0.7.0: looted coin counts as income too.
-        sessionGPH = math.floor(((NS.session.copper + (NS.session.lootCopper or 0)) / elapsed) * 3600)
-    end
-    if panel.statsSessionGPH then
-        panel.statsSessionGPH.left:SetText(L["Session Gold/Hour"])
-        if sessionGPH then
-            panel.statsSessionGPH.right:SetText(
-                NS.CopperToGoldOnlyText(sessionGPH)
-                    .. string.format("  |cff888888(%s)|r", humanDuration(elapsed))
-            )
-        else
-            panel.statsSessionGPH.right:SetText(L["|cff888888-  (computing...)|r"])
-        end
-    end
-
+    -- v0.7.0: looted coin counts as income too.
+    local sessionGPH = math.floor(((NS.session.copper + (NS.session.lootCopper or 0)) / elapsed) * 3600)
     -- Best-update gate: 5 minutes of session AND new high. Compared
     -- against both records independently so a character-best update
     -- doesn't require an account-best, and vice versa.
-    if sessionGPH and elapsed >= 300 then
+    if elapsed >= 300 then
         local zone = GetRealZoneText()
         local zoneText = (zone and zone ~= "") and zone or "Unknown"
         local nowTime = time()
@@ -236,6 +217,37 @@ local function WC_RefreshGPHRows(panel, view, src, DB, ADB)
             AS.bestGPHAt = nowTime
             AS.bestGPHZone = zoneText
             AS.bestGPHChar = GetUnitName("player", true) or ""
+        end
+    end
+    return sessionGPH
+end
+
+local function WC_RefreshGPHRows(panel, view, src, DB, ADB)
+    local startedAt = NS.session.startedAt or 0
+    local now = GetTime()
+    local elapsed = (startedAt > 0) and (now - startedAt) or 0
+    local function humanDuration(secs)
+        secs = math.floor(secs)
+        if secs < 60 then
+            return string.format("%ds", secs)
+        elseif secs < 3600 then
+            return string.format("%dm %ds", math.floor(secs / 60), secs % 60)
+        end
+        local h = math.floor(secs / 3600)
+        local m = math.floor((secs % 3600) / 60)
+        local s = secs % 60
+        return string.format("%dh %dm %ds", h, m, s)
+    end
+    local sessionGPH = NS.StampBestGPH()
+    if panel.statsSessionGPH then
+        panel.statsSessionGPH.left:SetText(L["Session Gold/Hour"])
+        if sessionGPH then
+            panel.statsSessionGPH.right:SetText(
+                NS.CopperToGoldOnlyText(sessionGPH)
+                    .. string.format("  |cff888888(%s)|r", humanDuration(elapsed))
+            )
+        else
+            panel.statsSessionGPH.right:SetText(L["|cff888888-  (computing...)|r"])
         end
     end
 
@@ -1109,13 +1121,13 @@ local function BuildMainPanel(panel, content)
         versionAlertCB,
         L["Show the WoWClearance minimap button"],
         function()
-            return DB and DB.minimapButton ~= false
+            return NS.DB and NS.DB.minimapButton ~= false
         end,
         function(v)
             if NS.SetMinimapButtonVisible then
                 NS.SetMinimapButtonVisible(v)
-            elseif DB then
-                DB.minimapButton = v and true or false
+            elseif NS.DB then
+                NS.DB.minimapButton = v and true or false
             end
         end,
         -2
@@ -1362,7 +1374,7 @@ function NS.BuildSlashCommandList(content, firstAnchor)
         {
             run = "history",
             label = "|cffffff00/wc history|r  "
-                .. L["See what was sold or deleted this session, and why"],
+                .. L["See what was sold or deleted, and why"],
         },
         {
             -- v2.44.7: `||` renders as a literal pipe inside a WoW UI font
@@ -1421,8 +1433,8 @@ function NS.BuildSlashCommandList(content, firstAnchor)
             -- column so it aligns with the command rows beneath it.
             local topGap = (prevAnchor == cmdHeader) and -8 or -16
             local divider = content:CreateTexture(nil, "ARTWORK")
-            -- WC-TRAP: SetTexture(r,g,b,a) draws a solid colour on 3.3.5a.
-            -- Do NOT "fix" this to SetColorTexture (does not exist here).
+            -- WC-TRAP: SetColorTexture, NOT SetTexture(r,g,b,a). The 3.3.5a original
+            -- used SetTexture with colour args; do NOT revert to it on this client.
             -- Matches the ListWidget divider colour so the visual family
             -- stays consistent across panels.
             -- v0.5.8: SetColorTexture, not SetTexture(r,g,b,a). The in-game widget

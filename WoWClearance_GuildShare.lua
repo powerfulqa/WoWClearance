@@ -259,7 +259,9 @@ local answered = {}
 -- Build this player's shareable payload from data WC already tracks (a name
 -- is included only when shareGuildName is on; otherwise it stays anonymous).
 local function localPayload()
-    local DB = WoWClearanceDB or {}
+    -- NS.DB is the proxy: bestGPH is a per-character field, so the raw
+    -- saved table holds only a frozen legacy copy of it.
+    local DB = NS.DB or WoWClearanceDB or {}
     local itemsSold = 0
     for _, n in pairs(DB.soldItemsByQuality or {}) do
         itemsSold = itemsSold + (tonumber(n) or 0)
@@ -371,8 +373,14 @@ end
 
 -- A peer asked for data: reply by whisper IF we opted in. The sender is used
 -- only as the whisper target; it is never stored or displayed (anonymity).
-NS.Comms.RegisterHandler("GREQ", function(_, sender, _)
+local GREQ_CHANNELS = { GUILD = true, PARTY = true, RAID = true, INSTANCE_CHAT = true }
+NS.Comms.RegisterHandler("GREQ", function(_, sender, channel)
     if not (WoWClearanceDB and WoWClearanceDB.shareGuildData) then
+        return
+    end
+    -- Sharing is guild/group scoped: a request whispered by a stranger
+    -- must not pull an opted-in player's totals.
+    if not GREQ_CHANNELS[channel] then
         return
     end
     if sender and sender ~= playerName() then

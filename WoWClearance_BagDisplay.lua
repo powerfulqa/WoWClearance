@@ -129,8 +129,14 @@ function WC_compCache.bagSlotWillSellCategory(bag, slot)
     -- false for delete-listed items because they don't go through the
     -- merchant pipeline). Check it first so the red tint is honoured
     -- even though the item "won't sell" from WC_IsSellable's POV.
+    -- Same eligibility the tooltip and Delete Next use, so a Delete-List
+    -- item rescued by the Keep List, the account Sell List or a worn copy
+    -- is not ringed red. "locked" (mid-drag) still counts as delete.
     if DB.enableDeletion and IsInSet(DB.deleteList, itemID) then
-        return "delete"
+        local ok, token = NS.Decision.deleteEligible(NS.Decision.buildCtx(bag, slot, false))
+        if ok or token == "locked" then
+            return "delete"
+        end
     end
     -- v2.37.0: Keep List verdict. Keep-listed items also return false
     -- from WC_IsSellable (that's how the protection works), so the
@@ -1369,9 +1375,16 @@ local function WC_applyInspectItemLevel(button)
     local quality = link and select(3, GetItemInfo(link)) or nil
     WC_compCache.applyItemLevelOverlay(button, link, quality, "paperdoll")
 end
-if _G.InspectPaperDollItemSlotButton_Update then
+-- The inspect UI is load-on-demand, so this global is nil at file load.
+-- The hub calls this again when Blizzard_InspectUI loads.
+function WC_compCache.installInspectItemLevelHook()
+    if WC_compCache.inspectItemLevelHooked or not _G.InspectPaperDollItemSlotButton_Update then
+        return
+    end
+    WC_compCache.inspectItemLevelHooked = true
     hooksecurefunc("InspectPaperDollItemSlotButton_Update", WC_applyInspectItemLevel)
 end
+WC_compCache.installInspectItemLevelHook()
 
 local function WC_applyMerchantItemLevel()
     if not (MerchantFrame and MerchantFrame:IsShown()) then
@@ -1420,33 +1433,9 @@ local function WC_repaintBagButton(button)
     if not button then
         return
     end
-    local bag, slot
-    if button.GetBag and button.GetID then
-        -- Host bag-UI slot class: the slot resolves its own identity
-        -- via methods on the slot object. Standard ContainerFrame slot
-        -- buttons have GetID but no GetBag, so this branch is for
-        -- third-party bag-UI replacements only.
-        local ok, b = pcall(button.GetBag, button)
-        if ok then
-            bag = b
-        end
-        local ok2, s = pcall(button.GetID, button)
-        if ok2 then
-            slot = s
-        end
-    end
-    if not bag then
-        -- Standard ContainerFrame slot: button:GetID() is the slot
-        -- index; parent:GetID() is the bag index. Reverse the slot
-        -- index because ContainerFrame numbers buttons right-to-left.
-        local parent = button.GetParent and button:GetParent()
-        local parentBag = parent and parent.GetID and parent:GetID()
-        local rawSlot = button.GetID and button:GetID()
-        if parentBag and rawSlot then
-            bag = parentBag
-            slot = rawSlot
-        end
-    end
+    -- Shared resolver: in combined-bags mode every button has the same
+    -- parent, so a local parent:GetID() read judged them all as one bag.
+    local bag, slot = WC_compCache.bagSlotFromButton(button)
     if bag and slot then
         local link = GetContainerItemLink(bag, slot)
         local cInfo = C_Container.GetContainerItemInfo(bag, slot)
@@ -1852,6 +1841,7 @@ function WC_compCache.describeSellability(bag, slot)
     -- the core so the story matches the verdict.
     local tomeProtected = false
     if qualityPass
+        and not isJunk
         and not whitelistPass
         and not recipePass
         and (ctx.protectAllTomes or ctx.protectUnlearnedTomes)

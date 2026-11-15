@@ -412,16 +412,6 @@ local function WC_BuildBugReport()
         "Host bag-UI category API: "
             .. (WC_compCache.refreshHostCategories and "hooked" or "absent")
     )
-    add("LibItemSearch: " .. (_G.LibStub and _G.LibStub("LibItemSearch-1.0", true) and "yes" or "no"))
-    add(
-        "Auction pricing source: "
-            .. ((
-                _G.Auctionator
-                and _G.Auctionator.API
-                and _G.Auctionator.API.v1
-                and _G.Auctionator.API.v1.GetAuctionPriceByItemID
-            ) and "detected" or "absent")
-    )
 
     add("")
     add("--- Bag Display ---")
@@ -1024,7 +1014,7 @@ local function WC_BuildRuleSummary()
             else
                 mode = "no cap - sells all"
             end
-            local bind = (r and r.bindType) or "any"
+            local bind = (r and r.bindFilter) or "any"
             add(string.format(
                 "        %s: %s  (%s, bind: %s)",
                 qNames[q],
@@ -1375,8 +1365,6 @@ local function WC_BuildScanDebugDump(bag, slot)
     else
         add("ERROR: WC_compCache.scanBagItem missing.")
     end
-    add("")
-    add("--- Detection Results ---")
     return table.concat(lines, "\n")
 end
 

@@ -179,10 +179,6 @@ local function WC_ShowItemContextMenu(button)
         bag, slot = WC_compCache.bagSlotFromButton(button)
     end
     if not (bag and slot) then
-        bag = button:GetParent() and button:GetParent():GetID()
-        slot = button:GetID()
-    end
-    if not (bag and slot) then
         return
     end
     local itemID = GetContainerItemID(bag, slot)
@@ -245,7 +241,9 @@ local function WC_ShowItemContextMenu(button)
     then
         local _, _, rq = GetItemInfo(itemID)
         if rq and DB.sellKnownRecipeQualities and DB.sellKnownRecipeQualities[rq] then
-            recipeSellable = true
+            -- Bind filter, as in Decision.sell's recipePass.
+            local bf = DB.sellKnownRecipeBindFilter and DB.sellKnownRecipeBindFilter[rq] or "any"
+            recipeSellable = bf == "any" or bf == WC_compCache.getBindType(bag, slot)
         end
     end
     -- Tome protection: per-itemID storage

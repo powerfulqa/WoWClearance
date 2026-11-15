@@ -265,9 +265,21 @@ local WC_compCache = {
 -- wraps the table read once instead of destructuring it at each site.
 -- Returns nil when the spell DB is not ready yet, which callers already
 -- handle with an `or "<fallback>"`.
+--
+-- Memoised: the hub calls this on every player cast, and the API builds a
+-- new table per call. Bounded by the distinct spells seen in a session.
+local spellNames = {}
 function WC_compCache.spellName(id)
+    local name = id and spellNames[id]
+    if name then
+        return name
+    end
     local info = id and C_Spell and C_Spell.GetSpellInfo and C_Spell.GetSpellInfo(id)
-    return info and info.name
+    name = info and info.name
+    if name then
+        spellNames[id] = name
+    end
+    return name
 end
 
 -- Spell-known lookup (port work item 4 / 6).

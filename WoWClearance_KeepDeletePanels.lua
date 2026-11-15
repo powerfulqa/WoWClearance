@@ -120,16 +120,20 @@ DeletionSettingsPanel.parent = "WoWClearance"
 DeletionSettingsPanel:SetScript("OnShow", function(self)
     local DB = NS.DB
     WC_compCache.initPanel(self, function(self)
-        -- Settings are DB-backed; nothing to refresh on re-show, except the
-    end, function(_, content)
+        -- A settings-profile switch or a Quickstart preset changes these
+        -- fields while the panel is built: re-read them on every re-show.
+        if self.resync then
+            self.resync()
+        end
+    end, function(panel, content)
         -- v2.59.8 (Serv report): the panel is now scroll-wrapped so
         -- wrapped checkbox labels (v2.59.8's reactive-width fix) can't
         -- overflow the panel bottom past the Okay/Cancel buttons.
         -- Bind `self` to the scroll region so every child widget
         -- below hangs off the scrollable content instead of the raw
         -- panel - none of the OnClick closures in this build capture
-        -- `self`, verified before the rename. First arg ignored (`_`)
-        -- because the raw panel is no longer the parent for children.
+        -- `self`, verified before the rename. The raw panel (`panel`) is
+        -- no longer the parent for children; it only carries `resync`.
         local self = content
         local heading = NS.MakeHeader(self, L["Delete Settings"], -16)
         NS.AddHelpIcon(self, heading, "LEFT", "RIGHT", 8, 0, "gate-auto-delete-grey")
@@ -470,6 +474,19 @@ DeletionSettingsPanel:SetScript("OnShow", function(self)
         -- (was announceNote pre-v2.60.0). rarityCBs[4] is the Epic
         -- checkbox, the bottom-most widget in the Announce sub-section.
         NS.FitScrollContent(content, rarityCBs[4] and rarityCBs[4].cb or announceNote)
+
+        panel.resync = function()
+            local db = NS.DB
+            delCB:SetChecked(db.enableDeletion)
+            greyCB:SetChecked(db.markGreyForDeletion)
+            resilienceCB:SetChecked(db.autoMarkResilience)
+            knownRecipeCB:SetChecked(db.autoMarkKnownUnsellableRecipes)
+            announceCB:SetChecked(db.announceAutoDelete ~= false)
+            for q, entry in pairs(rarityCBs) do
+                entry.cb:SetChecked(db.announceAutoDeleteQualities[q] ~= false)
+            end
+            refreshAutoCBEnabled()
+        end
     end, true)
 end)
 

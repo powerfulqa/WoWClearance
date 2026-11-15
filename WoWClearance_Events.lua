@@ -760,8 +760,16 @@ local function EnsureDB()
             end
         end
         charNS._migratedV2 = true
-        if WoWClearanceDB.autoAddEquipped then
-            WC_compCache.pendingFreshInstallSync = true
+        -- First sight of this character: sync its worn gear at login if
+        -- "auto-add equipped" is on. The setting lives in the settings
+        -- profile, which only the proxy can read, so the check itself is
+        -- below, after the proxy and the default exist. (It used to read
+        -- the raw top level here, which nothing writes any more, so alts
+        -- never got the sync.)
+        -- Not for the transient pre-login namespace: it is new every
+        -- session, so it would re-run the sync for existing characters.
+        if not charNSIsTransient then
+            WC_compCache.newCharNeedsEquipSync = true
         end
     end
 
@@ -1211,12 +1219,6 @@ local function EnsureDB()
         -- but with isFreshInstall = false) keep OFF so they don't see a
         -- silent behaviour change on upgrade.
         DB.autoAddEquipped = isFreshInstall
-        if isFreshInstall and DB.autoAddEquipped then
-            -- Defer the one-shot equipped-gear sync to PLAYER_LOGIN
-            -- (handled at the bottom of the file) - inventory APIs
-            -- aren't reliably populated at ADDON_LOADED time.
-            WC_compCache.pendingFreshInstallSync = true
-        end
         -- v2.12.0: arm the first-run welcome message + setup popup.
         -- Persisted via DB._needsWelcome (not session-scoped) so a
         -- /reload between ADDON_LOADED and PLAYER_LOGIN doesn't lose it.
@@ -1230,6 +1232,16 @@ local function EnsureDB()
             -- (which fired a 2-button popup pointing at the Main panel)
             -- to make the intent explicit: open the wizard directly.
             DB._needsQuickstartOpen = true
+        end
+    end
+    -- Defer the one-shot equipped-gear sync to PLAYER_LOGIN (handled at the
+    -- bottom of the file): inventory APIs aren't reliably populated at
+    -- ADDON_LOADED time. Armed for every character seen for the first
+    -- time, which includes a fresh install (see newCharNeedsEquipSync).
+    if WC_compCache.newCharNeedsEquipSync then
+        WC_compCache.newCharNeedsEquipSync = nil
+        if DB.autoAddEquipped then
+            WC_compCache.pendingFreshInstallSync = true
         end
     end
     -- v2.38.0: one-shot migration from v2.37.x. If an upgrader had the
@@ -1824,6 +1836,9 @@ function WC_compCache.lootMoneyEvent(event)
             local gain = money - base
             WC_session.lootCopper = WC_session.lootCopper + gain
             WC_BumpStat("totalLootCopper", gain)
+            if NS.StampBestGPH then
+                NS.StampBestGPH()
+            end
         end
     end
 end
@@ -2019,7 +2034,6 @@ local function WC_ScanLootDelta()
     WC_compCache.lootEquippedSpare = WC_lootEquippedSnapshot
     WC_lootEquippedSnapshot = equippedNow
 end
-NS.ScanLootDelta = WC_ScanLootDelta
 
 -- Keep bags open when merchant closes
 local WC_keepBagsFlag = false
@@ -3087,6 +3101,10 @@ end
 -- frame's OnUpdate closure can capture this name). Body lives in this file
 -- because it references file-scope locals WC_IsOpenable + WC_autoOpenInFlight.
 function WC_HandleAutoOpenContainers()
+    -- Set only by this function's own 0.4 s retry; read here so an early
+    -- return below can never leave it armed for an unrelated call.
+    local isRetry = WC_compCache.autoOpenRetry
+    WC_compCache.autoOpenRetry = nil
     if not DB or not DB.autoOpenContainers then
         return
     end
@@ -3136,10 +3154,19 @@ function WC_HandleAutoOpenContainers()
     -- called outside the flush, e.g. from PLAYER_REGEN_ENABLED or the
     -- post-open WC_Delay retry). WC_IsOpenable re-reads the live slot, so
     -- a snapshot entry that has moved just resolves to "not openable".
+    -- Progress check: the 0.4 s retry stops when it would use the very
+    -- stack the last pass used (full bags, or a cast still running).
+    -- Without it the retry re-fired every 0.4 s until bag space freed up.
+    -- The next settled bag change runs a fresh pass.
     local snap = WC_compCache.acquireFlushSnapshot()
     for i = 1, #snap.entries do
         local e = snap.entries[i]
         if WC_IsOpenable(e.bag, e.slot) then
+            local key = e.bag .. ":" .. e.slot .. ":" .. tostring(e.itemID) .. ":" .. tostring(e.count)
+            if isRetry and key == WC_compCache.autoOpenLastKey then
+                return
+            end
+            WC_compCache.autoOpenLastKey = key
             WC_autoOpenInFlight = true
             UseContainerItem(e.bag, e.slot)
             -- 0.4 s gives the prior open's cast room to finish before we
@@ -3147,6 +3174,7 @@ function WC_HandleAutoOpenContainers()
             -- but risks interrupting the previous use.
             WC_Delay(0.4, function()
                 WC_autoOpenInFlight = false
+                WC_compCache.autoOpenRetry = true
                 WC_HandleAutoOpenContainers()
             end)
             return
@@ -4154,53 +4182,27 @@ function WC_compCache.isDowngradeVsEquipped(itemID, lootedILvl, equipLoc)
     return false, "at_or_above"
 end
 
--- v2.59.9: mirror of checkBagsForUpgrades' Keep-Upgrade stamp condition.
--- Returns true iff the item's iLvl is STRICTLY GREATER than the lowest
--- populated equipped iLvl across the item's candidate slots. Empty slots
--- are SKIPPED (an empty ring-2 slot doesn't disqualify a ring-in-bags from
--- being an upgrade over the populated ring-1). Feeds the sale veto
--- so no sell signal moves an item the auto-upgrade sweep
--- would have stamped, regardless of the Keep List entry's state - Serv
--- report: an upgrade ring's stats flipping
--- verdict to SELL because the Keep-Upgrade Keep List entry became stale
--- post-engrave. This check is Keep-List-independent so it survives that
--- class of staleness. Different from isDowngradeVsEquipped: THAT bails on
--- empty slots (conservatively keeps items that could fill the empty slot);
--- THIS treats empty slots as non-participating in the "is this an upgrade"
--- question (mirroring how checkBagsForUpgrades decides what to stamp).
-function WC_compCache.isUpgradeVsEquipped(itemID, ilvl, equipLoc)
-    if not itemID or not ilvl or ilvl <= 0 then
-        return false
-    end
-    if not equipLoc or equipLoc == "" then
-        return false
-    end
-    local slots = WC_compCache.INVTYPE_SLOTS[equipLoc]
-    if not slots then
-        return false
-    end
-    -- 2H narrowing mirror: if MH is 2H, offhand slot 17 is locked empty
-    -- and shouldn't be treated as a fillable candidate. Same rule
-    -- isDowngradeVsEquipped uses above; keep in lockstep or a 1H upgrade
-    -- past a 2H would be missed.
-    if equipLoc == "INVTYPE_WEAPON"
+-- Candidate equipped slots for an upgrade comparison, with the 2H
+-- narrowing: when the main hand holds a two-hander, slot 17 is locked
+-- empty, so 1H and off-hand items compare against slot 16 only (rationale
+-- in isDowngradeVsEquipped above, which keeps its own copy because it also
+-- reports why). One helper for the automatic cleanup, the upgrade stamp
+-- and /wc clean upgrades, which had drifted: the manual report did not
+-- narrow, so it "skipped" off-hands the automatic cleanup removed.
+WC_compCache.MAIN_HAND_ONLY = { 16 }
+function WC_compCache.upgradeSlotsFor(equipLoc)
+    local slots = equipLoc and WC_compCache.INVTYPE_SLOTS[equipLoc]
+    if slots and (equipLoc == "INVTYPE_WEAPON"
         or equipLoc == "INVTYPE_SHIELD"
         or equipLoc == "INVTYPE_HOLDABLE"
-        or equipLoc == "INVTYPE_WEAPONOFFHAND"
+        or equipLoc == "INVTYPE_WEAPONOFFHAND")
     then
-        local mhLink = GetInventoryItemLink and GetInventoryItemLink("player", 16)
-        if mhLink then
-            local _, _, _, _, _, _, _, _, mhEquipLoc = GetItemInfo(mhLink)
-            if mhEquipLoc == "INVTYPE_2HWEAPON" then
-                slots = { 16 }
-            end
+        local mhLink = GetInventoryItemLink("player", 16)
+        if mhLink and select(9, GetItemInfo(mhLink)) == "INVTYPE_2HWEAPON" then
+            return WC_compCache.MAIN_HAND_ONLY
         end
     end
-    local lowestEquipped = WC_compCache.getLowestEquippedILvl(slots)
-    if not lowestEquipped then
-        return false
-    end
-    return ilvl > lowestEquipped
+    return slots
 end
 
 function WC_compCache.checkBagsForUpgrades()
@@ -4225,7 +4227,11 @@ function WC_compCache.checkBagsForUpgrades()
     -- entries. Only touches autoTag "upgrade" entries; manual Keep
     -- List adds (no autoTag) and "equipped" / "set" autoTags are left
     -- alone (those have their own reactive sync paths).
-    if DB.blacklistAuto then
+    -- The answer only changes when worn gear changes, so run once after
+    -- login and once per PLAYER_EQUIPMENT_CHANGED (which clears the flag),
+    -- not on every settled bag change.
+    if DB.blacklistAuto and not WC_compCache.staleUpgradesChecked then
+        WC_compCache.staleUpgradesChecked = true
         for itemID, tag in pairs(DB.blacklistAuto) do
             if tag == "upgrade" then
                 -- v2.44.0: class-restriction self-heal. Pre-v2.44.0 the
@@ -4245,23 +4251,7 @@ function WC_compCache.checkBagsForUpgrades()
                     end
                 else
                     local _, _, _, iLvl, _, _, _, _, equipLoc = GetItemInfo(itemID)
-                    local slots = equipLoc and WC_compCache.INVTYPE_SLOTS[equipLoc]
-                    -- v2.59.10 (bug-hunt): 2H narrowing mirror. See the
-                    -- addition path below + isDowngradeVsEquipped +
-                    -- isUpgradeVsEquipped for the shared rationale.
-                    if slots and (equipLoc == "INVTYPE_WEAPON"
-                        or equipLoc == "INVTYPE_SHIELD"
-                        or equipLoc == "INVTYPE_HOLDABLE"
-                        or equipLoc == "INVTYPE_WEAPONOFFHAND")
-                    then
-                        local mhLink = GetInventoryItemLink and GetInventoryItemLink("player", 16)
-                        if mhLink then
-                            local _, _, _, _, _, _, _, _, mhEquipLoc = GetItemInfo(mhLink)
-                            if mhEquipLoc == "INVTYPE_2HWEAPON" then
-                                slots = { 16 }
-                            end
-                        end
-                    end
+                    local slots = WC_compCache.upgradeSlotsFor(equipLoc)
                     if iLvl and iLvl > 0 and slots then
                         local lowestEquipped = WC_compCache.getLowestEquippedILvl(slots)
                         -- Remove only when a slot is actually populated and
@@ -4319,31 +4309,10 @@ function WC_compCache.checkBagsForUpgrades()
                     if current and current > 0 then
                         iLvl = current
                     end
-                    local slots = equipLoc and WC_compCache.INVTYPE_SLOTS[equipLoc]
-                    -- v2.59.10 (bug-hunt): 2H narrowing mirror. Same rule
-                    -- isDowngradeVsEquipped + isUpgradeVsEquipped use:
-                    -- when the player wields a 2H, offhand slot 17 is
-                    -- LOCKED empty and shouldn't be treated as a fillable
-                    -- candidate slot. Without this narrowing, an
-                    -- INVTYPE_SHIELD / HOLDABLE / WEAPONOFFHAND / 1H-
-                    -- INVTYPE_WEAPON in bags gets its upgrade check against
-                    -- slot 17's empty iLvl (0) which mass-stamps every
-                    -- offhand item as an upgrade. Pre-v2.59.10 the drift
-                    -- was safe (over-protect side of the sale veto)
-                    -- but caused inconsistency between the three predicates.
-                    if slots and (equipLoc == "INVTYPE_WEAPON"
-                        or equipLoc == "INVTYPE_SHIELD"
-                        or equipLoc == "INVTYPE_HOLDABLE"
-                        or equipLoc == "INVTYPE_WEAPONOFFHAND")
-                    then
-                        local mhLink = GetInventoryItemLink and GetInventoryItemLink("player", 16)
-                        if mhLink then
-                            local _, _, _, _, _, _, _, _, mhEquipLoc = GetItemInfo(mhLink)
-                            if mhEquipLoc == "INVTYPE_2HWEAPON" then
-                                slots = { 16 }
-                            end
-                        end
-                    end
+                    local slots = WC_compCache.upgradeSlotsFor(equipLoc)
+                    -- 2H narrowing (in upgradeSlotsFor) matters here: without
+                    -- it an off-hand in bags compares against the locked-empty
+                    -- slot 17 and every off-hand is stamped as an upgrade.
                     if iLvl and iLvl > 0 and slots then
                         -- For multi-slot equipLocs (rings, trinkets,
                         -- 1H weapons), compute the LOWEST iLvl among
@@ -4652,16 +4621,13 @@ local worker = CreateFrame("Frame")
 worker:Hide()
 
 -- v2.13.0 quest-item safety net. Returns true iff GetItemInfo classifies
--- the item as itemClass "Quest". Used by WC_IsSellable and BuildQueue's
--- delete branch to refuse auto-vendor / auto-delete on quest items even
--- when they're explicitly on the whitelist or delete list. Catches the
--- failure mode where a user added an item to a list months ago and then
--- later picked it up for a quest. Manual paths (Alt+Right-Click → Sell
--- Now / Delete Now) are NOT gated by this - those represent explicit
--- user intent. GetItemInfo's 6th return is the top-level item class
--- ("Armor", "Weapon", "Quest", "Consumable", etc.); "Quest" is the
--- enUS string and is what the localised client also returns here in
--- 3.3.5a (it's a category key, not display text).
+-- the item as itemClass "Quest". It vetoes the automatic quality rules and
+-- the auto-mark and grey-delete picks only: an explicit Sell List entry
+-- still sells a quest item (pinned in tests/test_decision.lua), and Delete
+-- Next still takes a Delete-Listed one. Manual paths (Alt+Right-Click) are
+-- not gated either. GetItemInfo's 6th return is the localized class name,
+-- so this matches on English clients only, which is all this addon
+-- supports (owner decision, 2026-11-15).
 function WC_compCache.isQuestItem(itemID)
     if not itemID then
         return false
@@ -4947,6 +4913,7 @@ function WC_compCache.nextGreyToDelete()
                 and not (accountKeep and accountKeep[id])
                 and not (blacklistAuto and blacklistAuto[id])
                 and not (deleteList and deleteList[id])
+                and not (WC_compCache.equipmentSetIDs and WC_compCache.equipmentSetIDs[id])
                 and not (WC_compCache.hostLocked and WC_compCache.hostLocked(id))
             then
                 local cInfo = C_Container.GetContainerItemInfo(e.bag, e.slot)
@@ -5764,13 +5731,11 @@ local function BuildQueue(junkOnly)
         end
     end
 
+    -- Batch size, not a limit: FinishRun re-scans and sells the rest in
+    -- further batches while the merchant stays open.
     local cap = WC_EffectiveMaxItemsPerRun()
-    if #queue > cap then
-        local removed = #queue - cap
-        for i = #queue, cap + 1, -1 do
-            queue[i] = nil
-        end
-        PrintNicef(L["|cffffff00Sold %d items this trip (%d more left). Talk to the merchant again to sell the rest.|r"], cap, removed)
+    for i = #queue, cap + 1, -1 do
+        queue[i] = nil
     end
 end
 
@@ -5785,6 +5750,9 @@ local function FinishRun()
     -- Stats panel's "Top Zones" rollup tracks worker sells too.
     if (goldThisVendoring or 0) > 0 then
         WC_compCache.attributeCopperToZone(goldThisVendoring)
+        if NS.StampBestGPH then
+            NS.StampBestGPH()
+        end
     end
 
     -- One summary builder for the mid-run and final lines below, so the
@@ -5806,6 +5774,11 @@ local function FinishRun()
         PrintNice(WC_BatchSummary(false))
         WC_Delay(1.0, function()
             if not MerchantFrame or not MerchantFrame:IsShown() or WC_compCache.merchantBuysNothing then
+                return
+            end
+            -- A run that started during the wait (merchant re-opened, Force
+            -- Sell) owns the queue now; rebuilding it here would wipe it.
+            if WC_compCache.vendorRunning then
                 return
             end
             -- "Object is busy" means the client dropped a sale rather than
@@ -6619,7 +6592,7 @@ function WC_compCache.buildStaleUpgradeReport()
             if not name or not iLvl then
                 deferred[#deferred + 1] = id
             else
-                local slots = equipLoc and equipLoc ~= "" and WC_compCache.INVTYPE_SLOTS[equipLoc]
+                local slots = WC_compCache.upgradeSlotsFor(equipLoc)
                 if not slots then
                     skipped[#skipped + 1] = { id = id, name = name }
                 else
@@ -6661,7 +6634,9 @@ end
 -- Handlers for the three operational keybindings (declared in Bindings.xml,
 -- labels above with the binding registration block).
 function WoWClearance_ToggleSettings()
-    if SettingsPanel and SettingsPanel:IsShown() then
+    if NS.StandaloneHost and NS.StandaloneHost() then
+        NS.HideStandaloneWindow()
+    elseif SettingsPanel and SettingsPanel:IsShown() then
         SettingsPanel:Hide()
     else
         NS.OpenOptionsPanel("WoWClearanceOptionsMain")
@@ -7502,6 +7477,10 @@ f:SetScript("OnEvent", function(self, event, ...)
             if WC_compCache.installHostBagItemLevelHook then
                 WC_compCache.installHostBagItemLevelHook()
             end
+        elseif addonName == "Blizzard_InspectUI" then
+            if WC_compCache.installInspectItemLevelHook then
+                WC_compCache.installInspectItemLevelHook()
+            end
         end
     elseif event == "PLAYER_LOGOUT" then -- luacheck: ignore 542
         -- No-op. The previous body (`WoWClearanceDB = DB`) was a defensive
@@ -7531,6 +7510,11 @@ f:SetScript("OnEvent", function(self, event, ...)
             if DB.enableDeletion and DB.warnConflictingAddons and WC_HasConflictingDeleteAddon() then
                 StaticPopup_Show("WC_CONFLICT_WARNING")
             end
+        end
+        -- Panels are created shown inside the Settings container; park
+        -- them so opening the game's Settings cannot build them all.
+        if event == "PLAYER_LOGIN" and NS.ParkPanels then
+            NS.ParkPanels()
         end
         -- v2.51.0: watch-list toggle snapshot at PLAYER_LOGIN, after
         -- EnsureDB has seeded defaults. /wc bugreport diffs against
@@ -7753,6 +7737,7 @@ f:SetScript("OnEvent", function(self, event, ...)
             WC_compCache.bagUpdateFrame:Show()
         end
     elseif event == "PLAYER_EQUIPMENT_CHANGED" then
+        WC_compCache.staleUpgradesChecked = nil
         -- v2.10.0: auto-protect equipped gear. arg1 is the slot id (1-19);
         -- empty slots fire too (the player just un-equipped). The helper
         -- gates on DB.autoAddEquipped, skips shirt/tabard, and bails when
@@ -7775,7 +7760,10 @@ f:SetScript("OnEvent", function(self, event, ...)
         end
     elseif event == "MERCHANT_SHOW" then
         WC_StampEvent("merchantShow")
-        EnsureDB()
+        -- Login already ran the full default sweep; only bootstrap here.
+        if not DB then
+            EnsureDB()
+        end
         WC_batchTotalSold = 0
         WC_batchTotalGold = 0
         WC_keepBagsFlag = true

@@ -480,6 +480,12 @@ local function WC_buildHelpEntries()
         panel = "WoWClearanceOptionsDeletionSettings",
     },
     {
+        id = "gate-automark-protect-high-ilvl",
+        q = L["Protect high item level gear from auto-mark"],
+        a = L["When this is on, WoWClearance never adds high item level gear to the Delete List by itself. You can still add an item by hand.\n\nTurn it off only if you want auto-mark to include that gear too."],
+        panel = "WoWClearanceOptionsBlacklistSettings",
+    },
+    {
         id = "gate-announce-auto-delete",
         q = L["Announce deletions in chat"],
         a = L["When Delete Next deletes an item, or WoWClearance auto-marks a piece of unsellable Resilience gear for deletion, it normally prints one chat line per event so you can see what just happened. Turn this off if you find the chat noise unwelcome.\n\nThe toggle silences only those two lines; the manual vendor-cycle summary, the session stats, and the lifetime totals are unaffected, and your Delete List itself still tracks every destroyed item.\n\nA per-rarity filter sits under the master toggle: pick which rarities (Poor / Common / Uncommon / Rare / Epic) should still print. Master off silences everything; master on lets each rarity's tick decide - so you can see Rare + Epic deletions but silence the Greens and Greys that flood the chat while farming."],
@@ -1142,9 +1148,12 @@ HelpPanel:SetScript("OnShow", function(self)
         searchBox:SetHeight(20)
         searchBox:SetPoint("TOPLEFT", searchLabel, "BOTTOMLEFT", 6, -4)
         WC_compCache.setPanelWidth(searchBox, 60)
-        searchBox:SetScript("OnTextChanged", function(box)
-            s._helpSearch = (box:GetText() or ""):lower():gsub("^%s+", ""):gsub("%s+$", "")
+        -- Debounced like the list and log search boxes: a relayout of
+        -- every Help entry per keystroke was the only undebounced search.
+        NS.MakeSearchDebounce(searchBox, function()
             refreshLayout(s)
+        end, function(text)
+            s._helpSearch = text:lower():gsub("^%s+", ""):gsub("%s+$", "")
         end)
         searchBox:SetScript("OnEscapePressed", function(box)
             box:SetText("")

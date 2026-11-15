@@ -29,10 +29,10 @@
 -- ONLY remaining check for the moved-global class on Forever. Both of the
 -- tools that look like they cover it do not:
 --
---   * luacheck cannot see it, because the old 3.3.5a names are still
---     declared in read_globals while the migration finishes. That is
---     deliberate, not debt, and it means a bare GetItemInfo(...) left at a
---     call site lints clean at 0 warnings.
+--   * luacheck saw none of it while the old 3.3.5a names were declared
+--     in read_globals. The moved names were removed from .luacheckrc once
+--     the migration finished, so a bare GetItemInfo(...) now warns; this
+--     suite stays as the check that does not depend on that config.
 --   * wow_lua_lint cannot see it either. Its unknown-function check is
 --     OFF for this client - it says so in its own output, because upstream
 --     publishes no global function list for Forever - and its
@@ -180,9 +180,9 @@ end
 -- the calls sit on the vendor and delete paths the failure is quiet and
 -- expensive rather than loud.
 --
--- luacheck cannot catch this on its own: the old names are still declared in
--- .luacheckrc's read_globals (they have to be, until every call site moves),
--- so a bare call lints clean. This check is the thing that notices.
+-- luacheck now warns on a bare call too (the old names are no longer
+-- declared in .luacheckrc), but only while nobody re-adds one there. This
+-- check notices either way.
 --
 -- A call site passes if EITHER it is namespaced at the point of use
 -- (`C_Container.GetContainerItemInfo(...)`) OR the file binds the name from

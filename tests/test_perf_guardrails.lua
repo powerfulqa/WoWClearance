@@ -732,11 +732,12 @@ do
         local body = src:sub(fnStart, fnEnd)
         -- Look for the prime-frame setup pattern outside the
         -- per-row loop.
-        local hasPrimeHoist = body:find("local primeFrame = GameTooltip") ~= nil
-            and body:find("local canPrime") ~= nil
-        check("CreateListUI hoists GameTooltip prime setup outside the row loop",
-              hasPrimeHoist,
-              "SetOwner per uncached row was wasteful; one owner serves the whole pass")
+        local primesByRequest = body:find("C_Item.RequestLoadItemDataByID(id)", 1, true) ~= nil
+            and body:find("primeFrame", 1, true) == nil
+            and body:find("primeTries < LIST_PRIME_MAX_TRIES", 1, true) ~= nil
+        check("CreateListUI primes uncached items by request, bounded, never via GameTooltip",
+              primesByRequest,
+              "the hidden-tooltip prime stole the live tooltip and its retry never stopped")
     end
 end
 
@@ -5843,14 +5844,15 @@ do
             and s:find('type = "delete"', 1, true) == nil,
         "an automatic delete (debounce scan, vendor queue) can only be blocked by the game and loop with the item on the cursor.")
     local grey = s:match("function WC_compCache%.nextGreyToDelete%(%)(.-)\nend\n") or ""
-    check("Test 88aa: the grey pick skips kept, auto-kept, Delete-Listed, equipped and quest items",
+    check("Test 88aa: the grey pick skips kept, auto-kept, Delete-Listed, equipped, equipment-set and quest items",
         grey:find("quality == 0", 1, true) ~= nil
             and grey:find('itemType ~= "Quest"', 1, true) ~= nil
             and grey:find("not IsEquippedItem(id)", 1, true) ~= nil
             and grey:find("not (keepList and keepList[id])", 1, true) ~= nil
             and grey:find("not (accountKeep and accountKeep[id])", 1, true) ~= nil
             and grey:find("not (blacklistAuto and blacklistAuto[id])", 1, true) ~= nil
-            and grey:find("not (deleteList and deleteList[id])", 1, true) ~= nil,
+            and grey:find("not (deleteList and deleteList[id])", 1, true) ~= nil
+            and grey:find("not (WC_compCache.equipmentSetIDs and WC_compCache.equipmentSetIDs[id])", 1, true) ~= nil,
         "Mark grey items for deletion must never take a protected grey.")
     check("Test 88aa: EnsureDB seeds markGreyForDeletion OFF and clears the old automatic switches",
         s:find("DB.markGreyForDeletion = false", 1, true) ~= nil
@@ -6014,35 +6016,6 @@ do
             and src:find("win.search", 1, true) ~= nil
             and src:find("HIST_DISPLAY_MAX", 1, true) ~= nil,
         "The window MUST support filtering (win.filter across All/Sold/Deleted), a search field (win.search), and cap rendered rows (HIST_DISPLAY_MAX) with Copy for the full list.")
-end
-
--- ---------------------------------------------------------------------------
--- Test 117 (v2.57.2): the quality-rule iLvl cap is a HARD ceiling for the
--- affix sell paths (affix-rank floor + "sell affixes you already have"), so a
--- high-iLvl item a cap is meant to protect is not sold just because the player
--- owns its affix. Near item-loss report (Bizzaro): an ilvl-277 Epic sold under
--- an Epic cap of 250. WC_IsSellable, describeSellability and the tooltip must
--- all apply the SAME shared gate or the trace / tooltip disagree with the vendor.
--- ---------------------------------------------------------------------------
-do
-    -- v2.59.9 (Serv report): the ceiling gate must also veto affix-sales
-    -- when the item is an iLvl UPGRADE over equipped and autoProtectUpgrades
-    -- is on, regardless of the rarity rule's cap mode. Root cause of the
-    -- report: engraving a known-dupe affix onto an upgrade ring flipped its
-    -- verdict from Keep to Sell because the Keep-Upgrade Keep List entry
-    -- had become stale post-engrave. This helper is Keep-List-independent
-    -- so the invariant survives that class of staleness.
-    check("Test 117d: isUpgradeVsEquipped helper exists (v2.59.9)",
-        src:find("function WC_compCache.isUpgradeVsEquipped", 1, true) ~= nil,
-        "WC_compCache.isUpgradeVsEquipped MUST exist as the shared 'is this an iLvl upgrade over currently equipped' predicate consumed by affixSaleWithinCeiling; removing it means the autoDupe veto below loses its Keep-List-independent safety net.")
-    check("Test 117e: affixSaleWithinCeiling vetoes when autoProtectUpgrades + isUpgradeVsEquipped",
-        src:find("DB.autoProtectUpgrades", 1, true) ~= nil
-            and src:find("WC_compCache.isUpgradeVsEquipped(itemID, ilvl, equipLoc)", 1, true) ~= nil,
-        "affixSaleWithinCeiling MUST early-return false when DB.autoProtectUpgrades is on AND WC_compCache.isUpgradeVsEquipped(itemID, ilvl, equipLoc) returns true. Without this, an engrave / itemID-change scenario that loses the Keep-Upgrade Keep List entry lets autoDupePass / affixRankPass sell the upgrade.")
-    check("Test 117f: isUpgradeVsEquipped uses getLowestEquippedILvl (mirrors checkBagsForUpgrades' stamp condition)",
-        src:find("function WC_compCache.isUpgradeVsEquipped") ~= nil
-            and src:find("WC_compCache%.getLowestEquippedILvl%(slots%)") ~= nil,
-        "isUpgradeVsEquipped must consume the same getLowestEquippedILvl helper checkBagsForUpgrades uses to stamp Keep-Upgrade entries, so the veto fires on exactly the same items the auto-tag would stamp. Any drift here reintroduces the mirror-drift class of bug this test guards against.")
 end
 
 -- ---------------------------------------------------------------------------

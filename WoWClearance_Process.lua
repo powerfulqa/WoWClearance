@@ -608,8 +608,6 @@ local CONVERTIBLE_ELEMENTALS = {
     [22578] = true, -- Mote of Water        -> Primal Water
 }
 
-WC_compCache.CONVERTIBLE_ELEMENTALS = CONVERTIBLE_ELEMENTALS
-
 -- Eligibility predicate for the Convert mode. Mirrors canMill / canProspect
 -- in shape: returns true when the item is a known lower-tier elemental
 -- AND the count gate is met (10 per conversion). The list-veto + ignored

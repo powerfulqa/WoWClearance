@@ -478,7 +478,26 @@ local function CreateListUI(parent, titleText, setTableName, x, y)
         return false
     end
 
+    -- After a Remove (one id) or Clear All (no id): drop the Keep List's
+    -- auto-protect tags so a later manual re-add is not shown as
+    -- auto-protected, and repaint bag borders. Same upkeep as
+    -- NS.RemoveItemFromList.
+    local function listMutated(id)
+        local auto = setTableName == "blacklist" and NS.DB and NS.DB.blacklistAuto
+        if auto then
+            if id then
+                auto[id] = nil
+            else
+                wipe(auto)
+            end
+        end
+        if NS.RefreshSellBorders then
+            NS.RefreshSellBorders()
+        end
+    end
     local pendingRetry = false
+    local primeTries = 0
+    local LIST_PRIME_MAX_TRIES = 3
 
     local function Refresh()
         rowFactory.hideAllRows()
@@ -517,17 +536,6 @@ local function CreateListUI(parent, titleText, setTableName, x, y)
             end)
         end
 
-        -- Tooltip-prime helper. SetHyperlink for an uncached item
-        -- queues an async server request; the response populates the
-        -- item cache and the existing pendingRetry chain re-paints
-        -- once names are available. SetOwner is called once outside
-        -- the loop body since the same owner serves every prime.
-        local primeFrame = GameTooltip
-        local canPrime = primeFrame and primeFrame.SetHyperlink
-        if canPrime then
-            primeFrame:SetOwner(UIParent, "ANCHOR_NONE")
-        end
-
         local shown = 0
         local rowY = -4
         local hasUncached = false
@@ -538,9 +546,10 @@ local function CreateListUI(parent, titleText, setTableName, x, y)
             local name, _, quality, _, _, _, _, _, _, itemTexture = GetItemInfo(id)
             if not name then
                 hasUncached = true
-                if canPrime then
-                    primeFrame:SetHyperlink("item:" .. id .. ":0:0:0:0:0:0:0")
-                end
+                -- Ask the client to load the item; the pendingRetry pass
+                -- below repaints once names arrive. (The old hidden
+                -- GameTooltip prime stole whatever tooltip was showing.)
+                C_Item.RequestLoadItemDataByID(id)
                 name = "ItemID: " .. id
             end
 
@@ -570,19 +579,13 @@ local function CreateListUI(parent, titleText, setTableName, x, y)
                     if t then
                         t[id] = nil
                     end
+                    listMutated(id)
                     Refresh()
                 end)
                 row:Show()
                 row.rm:Show()
                 rowY = rowY - 22
             end
-        end
-
-        -- One Hide() after the prime loop instead of one per uncached
-        -- item. SetOwner(ANCHOR_NONE) keeps the tooltip offscreen
-        -- while we prime, then we hide it once at the end.
-        if canPrime then
-            primeFrame:Hide()
         end
 
         rowFactory.setActiveRows(shown)
@@ -612,8 +615,14 @@ local function CreateListUI(parent, titleText, setTableName, x, y)
         -- triggers that hook, no manual call needed.
 
         -- If any items were uncached, retry after a delay to pick up server responses
-        if hasUncached and not pendingRetry then
+        -- Only while the list is on screen, and at most LIST_PRIME_MAX_TRIES
+        -- times in a row: an ID that never resolves used to re-sort and
+        -- repaint the list every 1.5 s for the rest of the session.
+        if not hasUncached then
+            primeTries = 0
+        elseif not pendingRetry and primeTries < LIST_PRIME_MAX_TRIES and box:IsVisible() then
             pendingRetry = true
+            primeTries = primeTries + 1
             NS.Delay(1.5, function()
                 pendingRetry = false
                 Refresh()
@@ -645,6 +654,7 @@ local function CreateListUI(parent, titleText, setTableName, x, y)
         if dialog then
             dialog.data = function()
                 WC_ClearListWithPrune(NS.GetListTable(setTableName))
+                listMutated()
                 Refresh()
                 NS.PrintNicef(L['Cleared every item from "|cffffff00%s|r".'], titleText)
                 PlaySound(SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON)

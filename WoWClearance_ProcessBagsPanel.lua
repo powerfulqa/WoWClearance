@@ -350,14 +350,14 @@ end
 -- applies via startProcessCastCooldown.
 local castStartDriver = CreateFrame("Frame")
 castStartDriver:RegisterEvent("UNIT_SPELLCAST_START")
-castStartDriver:SetScript("OnEvent", function(_, _, unit, spellName)
-    if unit ~= "player" or not spellName then
+castStartDriver:SetScript("OnEvent", function(_, _, unit, _, spellID)
+    -- Payload on Forever is (unitTarget, castGUID, spellID); 3.3.5a sent
+    -- the spell name second. Same fix as UNIT_SPELLCAST_SUCCEEDED in the hub.
+    local spellName = unit == "player" and spellID and WC_compCache.spellName(spellID)
+    if not spellName or not getProcessSpellNames()[spellName] then
         return
     end
-    if not getProcessSpellNames()[spellName] then
-        return
-    end
-    local _, _, _, _, startTime, endTime = UnitCastingInfo("player")
+    local _, _, _, startTime, endTime = UnitCastingInfo("player")
     local duration = PROCESS_BUTTON_FLOOR_SECONDS
     if startTime and endTime then
         local effective = (endTime - startTime) / 1000

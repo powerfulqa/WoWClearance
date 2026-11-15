@@ -352,6 +352,20 @@ local function WC_createWindow()
     return win
 end
 
+-- Park every panel hidden on UIParent. Also run once at login: the panel
+-- files create their frames shown and parented to the Settings container,
+-- so opening the game's Settings before /wc fired OnShow on all of them
+-- and built every panel in one frame (and sent the Guild panel's request).
+function NS.ParkPanels()
+    for _, name in ipairs(WC_PANEL_ORDER) do
+        local f = _G[name]
+        if f then
+            f:Hide()
+            f:SetParent(UIParent)
+        end
+    end
+end
+
 function NS.HideStandaloneWindow()
     if not WC_window then
         return
@@ -366,13 +380,7 @@ function NS.HideStandaloneWindow()
     -- to the Settings container. Since the sub-categories were removed,
     -- this window is their only host - the Settings entry is a launcher
     -- (see WC_buildLauncher below), not a page they render into.
-    for _, name in ipairs(WC_PANEL_ORDER) do
-        local f = _G[name]
-        if f then
-            f:Hide()
-            f:SetParent(UIParent)
-        end
-    end
+    NS.ParkPanels()
     WC_activePanelName = nil
 end
 

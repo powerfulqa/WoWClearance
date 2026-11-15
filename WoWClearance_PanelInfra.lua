@@ -209,6 +209,14 @@ function WC_compCache.registerScrollFit(content, last, padding)
         return
     end
     local list = WC_compCache.widthRegistry.scrollFits
+    -- One entry per content frame: Help and the Guild panel re-fit on
+    -- every repaint, and appending each time grew this list all session.
+    for i = 1, #list do
+        if list[i].c == content then
+            list[i].l, list[i].p = last, padding
+            return
+        end
+    end
     list[#list + 1] = { c = content, l = last, p = padding }
 end
 

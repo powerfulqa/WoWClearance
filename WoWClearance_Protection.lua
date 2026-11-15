@@ -308,7 +308,10 @@ function WC_compCache.liveTooltipIsTome(tooltip, itemID)
             end
         end
     end
-    if itemID then
+    -- Same guard as the bag path above: a half-loaded tooltip answers "not
+    -- a tome" for now but must not cache it, or the item stays unprotected
+    -- all session.
+    if itemID and (result or (n > 1 and C_Item.IsItemDataCachedByID(itemID))) then
         WC_compCache.tomeCache[itemID] = result
     end
     return result

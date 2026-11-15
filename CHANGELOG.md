@@ -6,6 +6,48 @@ release history is in [its own changelog](https://github.com/powerfulqa/EbonClea
 Version numbers there belong to that project and do not continue into
 this one.
 
+### v0.8.3
+
+A cleanup release from a full audit of the addon. Fixes only.
+
+- **Junk marks always sell.** An item you mark as junk in DaylightUI's
+  bags now sells even when it is a recipe, has an appearance you have not
+  collected, or is still tradeable. Before, turning on a sell rule for
+  its quality made it stop selling.
+- **New characters keep their worn gear.** Every character now gets its
+  equipped gear added to the Keep List on first login. Before, only the
+  first character on the account did.
+- **Delete Next is safer.** It no longer offers a grey item that is in an
+  equipment set. The red delete border now shows only on items Delete
+  Next will really take.
+- **Vendor runs.** The "Talk to the merchant again" line is gone: the
+  addon already sells the rest by itself. Reopening a merchant quickly no
+  longer breaks the summary.
+- **Auto-open containers** tries once and waits when your bags are full,
+  instead of retrying several times a second.
+- **Process Bags.** The button now stays locked for the whole cast.
+- **Guild stats.** Shared stats are only sent to guild and group
+  requests, never to a whisper. Best gold/hour is now recorded with the
+  Stats window closed, and the right value is shared.
+- **Settings window.**
+  - The "Open/close settings" key now closes the window too.
+  - The minimap button box shows its real state.
+  - Delete Settings follows a profile switch.
+  - Removing an item in a list panel updates bag borders at once.
+  - A list holding an item the game cannot find no longer refreshes all
+    session or hides your tooltip.
+  - Opening the game's Options first no longer builds every panel.
+- **Item levels** show in the inspect window, and stay on the right items
+  in combined bags.
+- **Recipes** are no longer left unprotected after hovering one before
+  its tooltip finished loading.
+- `/wc clean upgrades` now agrees with the automatic cleanup when you
+  wield a two-handed weapon, and `/wc rules` shows each rule's bind
+  filter.
+- **Smoother play.** Less work on every spell cast, bag change, vendor
+  visit and Help search.
+- **Help.** New entry for "Protect high item level gear from auto-mark".
+
 ### v0.8.2
 
 - **Fix: junk not sold with DaylightUI.** With "Sell grey items" off,

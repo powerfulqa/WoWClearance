@@ -29,11 +29,8 @@ globals = {
     "SLASH_WOWCLEARANCE1",
     "SLASH_WCDEBUG1",
     "SlashCmdList",
-    "WC_IsMerchantAllowed",     -- assigned by module, read by vendor loop
     "ChatEdit_InsertLink",      -- replaced by module to capture shift-click links (3.3.5a path)
-    "ContainerFrameItemButton_OnModifiedClick", -- wrapped to add Alt+Right-Click context menu
     "ContainerFrameItemButtonMixin",            -- v0.5.2: the Forever replacement for the above
-    "BankFrameItemButtonGeneric_OnClick",       -- wrapped to add Alt+Right-Click context menu on the main bank bag (Vanilla path only)
     -- Keybinding headers / names (read by Blizzard, set by addon)
     "BINDING_HEADER_WOWCLEARANCE",
     "BINDING_NAME_WOWCLEARANCE_TOGGLE_SETTINGS",
@@ -56,12 +53,6 @@ globals = {
     -- Blizzard pattern for SecureActionButton-based keybinds, see
     -- WoWClearanceTargetMerchantButton wiring).
     "_G",
-    -- DB and ADB are forward-declared locals at the file scope. Luacheck's
-    -- static analysis can't follow forward declarations across the file, so
-    -- treat them as writable globals here. They remain `local` in the actual
-    -- source.
-    "DB",
-    "ADB",
     -- StaticPopupDialogs is read-only by Blizzard's API but we register
     -- our own dialog templates onto it (StaticPopupDialogs.WC_CONFIRM_*).
     -- Treating it as writable silences the "setting read-only field" noise
@@ -110,20 +101,18 @@ read_globals = {
     -- a square minimap; the call site guards for its absence.
     "GetMinimapShape",
     "MerchantFrame", "OpenAllBags", "OpenBackpack", "OpenBag",
-    "InterfaceOptionsFramePanelContainer",
-    "InterfaceOptions_AddCategory", "InterfaceOptionsFrame_OpenToCategory",
     "HideUIPanel",  -- v0.5.4: UIParentPanelManager.lua:903; verified by shipped-source grep
     "PlaySound", "SOUNDKIT", "StaticPopup_Show", "StaticPopup_Hide",
     "GameTooltip_Hide", "UIFrameFlash",
-    "BankFrame", "CharacterFrame", "InspectFrame", "ColorPickerFrame",
+    "CharacterFrame", "InspectFrame", "ColorPickerFrame",
     -- OpacitySliderFrame and OpenColorPicker are ABSENT on WoW: Forever and
     -- were removed from the code in work item 6. Deliberately NOT declared,
     -- so reintroducing either is a lint error rather than a silent nil - the
     -- colour-picker alpha convention also flipped (the old slider was
     -- inverted; ColorPickerFrame:GetColorAlpha is not), so a reintroduction
     -- would likely carry the inversion back with it.
-    "CANCEL", "CLOSE",
-    "StaticPopup1", "StaticPopup_Visible",
+    "CANCEL",
+    "StaticPopup_Visible",
 
     -- Error handler
     "geterrorhandler",
@@ -132,16 +121,12 @@ read_globals = {
     "DEFAULT_CHAT_FRAME",
 
     -- Items / bags
-    "GetItemInfo",
-    "GetContainerItemID", "GetContainerItemInfo", "GetContainerItemLink",
-    "GetContainerNumSlots", "GetContainerNumFreeSlots",
-    "UseContainerItem", "PickupContainerItem",
     "DeleteCursorItem", "ClearCursor",
     -- Equipped inventory (v2.10.0 auto-protect-equipped path)
     "GetInventoryItemLink",
 
     -- Merchant
-    "GetMerchantNumItems", "GetMerchantItemInfo", "GetMerchantItemLink",
+    "GetMerchantItemLink",
     "RepairAllItems", "GetRepairAllCost", "CanMerchantRepair",
     "GetMoney",
     -- Guild bank repair (v2.9.0 optional repair-funds path)
@@ -174,7 +159,6 @@ read_globals = {
     "GetBindingKey", "GetBindingAction", "SetBinding", "SaveBindings", "GetCurrentBindingSet",
 
     -- Addon metadata
-    "GetAddOnInfo", "GetAddOnMetadata", "IsAddOnLoaded",
 
     -- Misc utilities
     "hooksecurefunc", "wipe", "select", "tinsert",
@@ -201,7 +185,6 @@ read_globals = {
     -- Unit / player (more)
     "UnitLevel", "UnitCastingInfo",
     -- Spellbook (recipe learn-state scans)
-    "GetSpellInfo",
     -- Equipment Manager sets: the three 3.3.5a globals (GetEquipmentSetInfo,
     -- GetEquipmentSetItemIDs, GetNumEquipmentSets) were REMOVED from this list
     -- once the last call site moved to C_EquipmentSet. All three are measured
@@ -212,21 +195,19 @@ read_globals = {
     -- CVars / modified-click
     "GetCVarBool", "IsModifiedClick",
     -- Addon list + CPU/memory diagnostics (/wc bugreport)
-    "GetNumAddOns", "GetAddOnCPUUsage", "GetAddOnMemoryUsage",
+    "GetAddOnCPUUsage", "GetAddOnMemoryUsage",
     "UpdateAddOnCPUUsage", "UpdateAddOnMemoryUsage",
     -- Money / coin text
-    "GetCoinTextureString",
     -- Zone / locale / guild / group / perf
     "GetRealZoneText", "GetLocale", "GetGuildInfo", "GetInventoryItemID",
     "GetFramerate",
     -- Addon-to-addon comms transport
-    "SendAddonMessage",
     -- Realm channel (WoWClearance_RealmComms.lua): addon messages on a
     -- temporary custom channel. All four are in the captured Forever API
     -- surface; Blizzard's own SlashCommands.lua / ChatFrame.lua call the
     -- leave and remove-window ones.
     "GetChannelName", "JoinTemporaryChannel", "LeaveChannelByName", "RemoveChatWindowChannel",
-    "SendChatMessage", "NUM_CHAT_WINDOWS",
+    "NUM_CHAT_WINDOWS",
     -- Bit library (3.3.5a exposes the BitLib `bit` table globally)
     "bit",
 

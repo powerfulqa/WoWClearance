@@ -389,7 +389,8 @@ end
 -- the accent and the text color.
 local function recolor()
     local win = _G.WoWClearanceWindow
-    local list = win and win.sidebar and win.sidebar:GetScrollChild()
+    -- Hidden window: nothing to recolor (this runs on a 1 s ticker).
+    local list = win and win:IsShown() and win.sidebar and win.sidebar:GetScrollChild()
     if not list then return end
     for _, btn in ipairs({ list:GetChildren() }) do
         if btn.label and btn.sel then
