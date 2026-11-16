@@ -6,6 +6,13 @@ release history is in [its own changelog](https://github.com/powerfulqa/EbonClea
 Version numbers there belong to that project and do not continue into
 this one.
 
+### Unreleased
+
+**Licence version 3.** No change to the addon itself.
+
+- The licence now forbids using the addon to train, fine-tune or evaluate AI models, adding it to AI datasets or indexes, and having AI agents copy or port its code into other software, without the author's written permission. AI help with using or debugging your own copy, or with a pull request, is still fine.
+- Copies obtained under licence version 2 stay under version 2.
+
 ### v0.8.5
 
 A Process Bags fix for rogues.

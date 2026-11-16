@@ -99,7 +99,8 @@ against Blizzard APIs.
 Releases up to v0.8.3 shipped under a custom source-available attribution
 licence, inherited from EbonClearance and restated for this fork. Later
 releases ship under version 2 of WoWClearance's own licence, which no
-longer allows forks or shared changes. The structural shape both
+longer allows forks or shared changes. Version 3 (2026-11-16) adds an
+AI and automated-agent clause. The structural shape both
 versions keep (Grant / Attribution / No-Rebrand / No-Warranty /
 Termination / Severability) follows similar source-available licences
 that have appeared in the WoW addon ecosystem before it. Neither project
