@@ -2,7 +2,8 @@
 
 [![Licence](https://img.shields.io/badge/Licence-Source--Available-blue?style=for-the-badge)](LICENSE)
 [![Client](https://img.shields.io/badge/WoW-Forever-orange?style=for-the-badge)](#requirements)
-[![Downloads](https://img.shields.io/github/downloads/powerfulqa/WoWClearance/total?style=for-the-badge&label=Downloads)](https://github.com/powerfulqa/WoWClearance/releases)
+[![Downloads (this release)](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Fpowerfulqa%2FWoWClearance%2Fbadge-data%2Flatest.json&style=for-the-badge&color=blue)](https://github.com/powerfulqa/WoWClearance/releases/latest)
+[![Downloads (lifetime)](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Fpowerfulqa%2FWoWClearance%2Fbadge-data%2Fdownloads.json&style=for-the-badge&color=blue)](https://github.com/powerfulqa/WoWClearance/releases)
 
 **A bag manager for WoW: Forever.** It sells what you don't want when you visit a vendor, keeps what you do, and helps you delete or process the rest.
 
