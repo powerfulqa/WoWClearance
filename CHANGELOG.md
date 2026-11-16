@@ -6,11 +6,17 @@ release history is in [its own changelog](https://github.com/powerfulqa/EbonClea
 Version numbers there belong to that project and do not continue into
 this one.
 
-### Unreleased
+### v0.8.6
 
-**Licence version 3.** No change to the addon itself.
+Tidier item tooltips, and licence version 3.
 
-- The licence now forbids using the addon to train, fine-tune or evaluate AI models, adding it to AI datasets or indexes, and having AI agents copy or port its code into other software, without the author's written permission. AI help with using or debugging your own copy, or with a pull request, is still fine.
+- **No Alt+Right-Click hint with DaylightUI bags.** When DaylightUI's
+  bags handle Alt+Right-Click, the WoWClearance hint line is left off
+  the tooltip. Their menu already has a WoWClearance row at the top.
+- **No second bank count.** The `Bank: N` line is left off when another
+  addon already shows bank counts on item tooltips, so the number is not
+  shown twice.
+- **Licence version 3.** The licence now forbids using the addon to train, fine-tune or evaluate AI models, adding it to AI datasets or indexes, and having AI agents copy or port its code into other software, without the author's written permission. AI help with using or debugging your own copy, or with a pull request, is still fine.
 - Copies obtained under licence version 2 stay under version 2.
 
 ### v0.8.5

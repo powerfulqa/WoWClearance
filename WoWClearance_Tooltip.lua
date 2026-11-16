@@ -589,7 +589,11 @@ local function WC_AnnotateTooltipInner(tooltip, out)
     end
     -- Discoverability hint for the v2.3.0 right-click context menu. Shown on
     -- every bag/item-link tooltip so users know the action is available.
-    out[#out + 1] = "|cff666666" .. L["Alt+Right-Click for WoWClearance menu"] .. "|r"
+    -- Hidden when DaylightUI's bags own Alt+Right-Click (their menu carries
+    -- our row, so the hint would point at the wrong menu).
+    if not WC_compCache.hostOwnsItemMenu then
+        out[#out + 1] = "|cff666666" .. L["Alt+Right-Click for WoWClearance menu"] .. "|r"
+    end
 end
 
 -- Frame-spike timing wrapper. Times the annotation body into the shared
@@ -658,7 +662,11 @@ local function WC_AnnotateTooltip(tooltip)
     itemID = itemID or (link and C_Item.GetItemInfoInstant(link))
     if itemID then
         local bank = (C_Item.GetItemCount(itemID, true, false, true) or 0) - (C_Item.GetItemCount(itemID) or 0)
-        if bank > 0 then
+        -- Left out when another addon already puts bank counts on item
+        -- tooltips, so the number isn't shown twice. Checked each time:
+        -- cheap, and addons can load on demand after us.
+        local otherShowsBank = C_AddOns.IsAddOnLoaded("DaylightMogul") or C_AddOns.IsAddOnLoaded("DaylightUI_Bags")
+        if bank > 0 and not otherShowsBank then
             tooltip:AddLine(string.format(L["Bank: %d"], bank), 1, 1, 1)
         end
         -- v0.7.0: account-wide lifetime counts, only the ones above zero.

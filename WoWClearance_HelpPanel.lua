@@ -122,7 +122,7 @@ local function WC_buildHelpEntries()
     {
         id = "tooltip-extras",
         q = L["What are the Bank and Sold / Looted lines on item tooltips?"],
-        a = L["|cffb6ffb6Bank: N|r shows how many of that item are in your bank. It only appears when you have some there.\n\n|cffb6ffb6Sold: N   Looted: N|r shows how many you have sold and looted with WoWClearance, across all your characters. Turn it off with 'Show how many you've sold and looted' on the Item Highlighting page."],
+        a = L["|cffb6ffb6Bank: N|r shows how many of that item are in your bank. It only appears when you have some there, and not when another addon already shows bank counts.\n\n|cffb6ffb6Sold: N   Looted: N|r shows how many you have sold and looted with WoWClearance, across all your characters. Turn it off with 'Show how many you've sold and looted' on the Item Highlighting page."],
         panel = "WoWClearanceOptionsCharacter",
     },
     {
