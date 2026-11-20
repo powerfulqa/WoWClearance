@@ -379,8 +379,30 @@ WC_compCache.settingsProfileFields = {
 -- "First Surname-Realm". Forever has character surnames and first names are
 -- not unique, so the first name alone let two characters share one
 -- partition (Keep / Sell / Delete lists, enabled, Sold History).
+--
+-- Since 2026-11-20 the client returns an empty realm name (a Blizzard change
+-- that may be permanent). "First Surname-" would open a new partition seeded
+-- from the frozen account-wide snapshot: old Keep / Sell Lists, so items on
+-- the real Keep List could be sold. With no realm, reuse this character's
+-- one saved "First Surname-Realm" partition. With none (a new character) or
+-- several (the same name on two realms, no guessing), "First Surname-".
 local function WC_DBCharKey()
-    return (GetUnitName("player", true) or "Unknown") .. "-" .. (GetRealmName() or "Unknown")
+    local name = GetUnitName("player", true) or "Unknown"
+    local realm = GetRealmName() or "Unknown"
+    if realm ~= "" then
+        return name .. "-" .. realm
+    end
+    local prefix, hit = name .. "-", nil
+    local chars = type(WoWClearanceDB) == "table" and WoWClearanceDB.chars
+    for key in pairs(type(chars) == "table" and chars or {}) do
+        if type(key) == "string" and #key > #prefix and key:sub(1, #prefix) == prefix then
+            if hit then
+                return prefix
+            end
+            hit = key
+        end
+    end
+    return hit or prefix
 end
 
 -- The pre-surname key, "First-Realm", for the one-time copy-forward below.

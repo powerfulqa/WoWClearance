@@ -15,6 +15,13 @@ this one.
   support stays: bag borders and groups, the menu row, Lock and junk
   marks, one junk seller, the options section, `/dui wc`, the "Vendored"
   data text and `/dui unlock` window placement.
+- **Your lists survive the realm name going missing.** Since 2026-11-20
+  the game gives addons an empty realm name. WoWClearance then opened a
+  new save slot for each character, filled from an old account-wide copy
+  of the lists, so the Keep List could be missing most of its items and
+  kept items could be sold. It now goes on using your character's saved
+  lists. A slot made in the meantime ("Name-" with no realm) is left in
+  the saved data untouched.
 
 ### v0.8.6
 

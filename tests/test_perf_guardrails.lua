@@ -7188,6 +7188,34 @@ do
         ev:find("not %(WoWClearanceDB%.surnameCopied and WoWClearanceDB%.surnameCopied%[WC_DBLegacyCharKey%(%)%]%)") ~= nil
             and ev:find("WoWClearanceDB%.surnameCopied%[legacyKey%] = charKey") ~= nil,
         "without the marker, a character created later with the same first name inherits another character's Sell and Delete Lists.")
+    -- Test 143f (2026-11-20): the client returns an empty realm name. The key
+    -- must land on the character's saved partition, never a fresh one seeded
+    -- from the old snapshot (wrong Keep List: kept items get sold).
+    local function keyWith(name, realm, chars)
+        local fn = keyFn and loadstring("return function()" .. keyFn .. "\nend")
+        if not fn then
+            return nil
+        end
+        local env = {
+            type = type,
+            pairs = pairs,
+            GetUnitName = function()
+                return name
+            end,
+            GetRealmName = function()
+                return realm
+            end,
+            WoWClearanceDB = { chars = chars },
+        }
+        return setfenv(fn(), env)()
+    end
+    check("Test 143f: with no realm name, the saved partition is reused",
+        keyWith("Serv Nocturne", "", { ["Serv Nocturne-R"] = {}, ["Serv Nocturne-"] = {} }) == "Serv Nocturne-R"
+            and keyWith("Serv Nocturne", "", {}) == "Serv Nocturne-"
+            and keyWith("Serv Nocturne", "", { ["Serv Nocturne-R"] = {}, ["Serv Nocturne-S"] = {} }) == "Serv Nocturne-"
+            and keyWith("Serv", "", { ["Serv Nocturne-R"] = {} }) == "Serv-"
+            and keyWith("Serv Nocturne", "R2", { ["Serv Nocturne-R"] = {} }) == "Serv Nocturne-R2",
+        "an empty realm opened a new partition with an old Keep List, so items on the real Keep List could be sold.")
     local del = ev:match("function WC_compCache%.executeBagSlotDelete%((.-)\nend\n")
     check("Test 143c: an own delete is counted only after the copy left its slot",
         del ~= nil
