@@ -372,12 +372,6 @@ local function WC_buildHelpEntries()
         panel = "WoWClearanceOptionsMerchant",
     },
     {
-        id = "gate-daylight-look",
-        q = L["Use DaylightUI look"],
-        a = L["With DaylightUI installed, WoWClearance's windows, settings and Alt+Right-Click menu use its look. Turn it off on the main settings page and type /reload to go back to the normal look. Whatever this is set to, items you Lock in DaylightUI's bags are never sold, and DaylightUI's own junk sale waits while WoWClearance is selling junk (Sell items at vendors and Sell grey items both on). With either off, DaylightUI sells its junk as usual."],
-        panel = "WoWClearanceOptionsMain",
-    },
-    {
         id = "gate-item-highlighting",
         q = L["Item highlighting"],
         a = L["One switch for all item highlighting. Off hides every bag border and item level, and greys out their options. Your choices are kept for when you turn it back on. Type /wc highlight to flip it from chat."],

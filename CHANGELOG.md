@@ -6,6 +6,16 @@ release history is in [its own changelog](https://github.com/powerfulqa/EbonClea
 Version numbers there belong to that project and do not continue into
 this one.
 
+### Unreleased
+
+- **No more DaylightUI look.** WoWClearance no longer restyles its own
+  windows, settings and Alt+Right-Click menu, and the "Use DaylightUI
+  look" switch is gone from the main page and from DaylightUI's options.
+  A skin addon can style the windows instead. The rest of the DaylightUI
+  support stays: bag borders and groups, the menu row, Lock and junk
+  marks, one junk seller, the options section, `/dui wc`, the "Vendored"
+  data text and `/dui unlock` window placement.
+
 ### v0.8.6
 
 Tidier item tooltips, and licence version 3.

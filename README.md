@@ -76,7 +76,6 @@ Optional coloured borders show which items will sell or be deleted, or are on a 
 
 With the DaylightUI addon installed:
 
-- WoWClearance's windows, settings and Alt+Right-Click menu use its look. "Use DaylightUI look" on the main page turns that off.
 - Its bags show the sell and delete borders, and get Delete List, Sell List, Account Sell List and Keep List groups.
 - Its Alt+Right-Click menu carries the WoWClearance rows, so there is one menu instead of two.
 - Items you Lock in its bags are never sold, deleted or processed. Items you mark "Sell as junk" are sold.

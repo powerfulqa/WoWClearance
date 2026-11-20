@@ -1182,40 +1182,6 @@ local function BuildMainPanel(panel, content)
         -2
     )
 
-    -- DaylightUI look (WoWClearance_Daylight.lua). Saved in
-    -- WoWClearanceDB.daylightLook (nil = on). Disabled without DaylightUI.
-    local hasDaylight = _G.DaylightUI ~= nil
-    local daylightCB = NS.AddCheckbox(
-        content,
-        "WoWClearanceDaylightLookCB",
-        warnConflictCB,
-        L["Use DaylightUI look"],
-        function()
-            return not (WoWClearanceDB and WoWClearanceDB.daylightLook == false)
-        end,
-        function(v)
-            if WoWClearanceDB then
-                WoWClearanceDB.daylightLook = v and true or false
-            end
-        end,
-        -2
-    )
-    local daylightDesc = hasDaylight and L["Needs DaylightUI. Takes a /reload to switch back."]
-        or L["Needs DaylightUI. Takes a /reload to switch back."] .. " (DaylightUI is not installed.)"
-    if not hasDaylight then
-        daylightCB:Disable()
-    end
-    daylightCB:HookScript("OnEnter", function(self)
-        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-        GameTooltip:SetText(L["Use DaylightUI look"], 1, 1, 1)
-        GameTooltip:AddLine(daylightDesc, nil, nil, nil, true)
-        GameTooltip:Show()
-    end)
-    daylightCB:HookScript("OnLeave", function()
-        GameTooltip:Hide()
-    end)
-
-
     -- v2.12.0: size the scroll content to fit the bottom-most widget so
     -- the scroll bar engages when the Interface Options frame is too
     -- short to show everything (matches the Merchant /
@@ -1229,7 +1195,7 @@ local function BuildMainPanel(panel, content)
     -- window, where opening a page calls CloseAllBags. The standalone window
     -- has no such limitation, so the warning would be false there.
     local hostNote = content:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
-    hostNote:SetPoint("TOPLEFT", daylightCB, "BOTTOMLEFT", 0, -14)
+    hostNote:SetPoint("TOPLEFT", warnConflictCB, "BOTTOMLEFT", 0, -14)
     WC_compCache.setPanelWidth(hostNote, 16)
     hostNote:SetJustifyH("LEFT")
     if hostNote.SetWordWrap then

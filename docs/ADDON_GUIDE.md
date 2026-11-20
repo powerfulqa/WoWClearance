@@ -1197,17 +1197,18 @@ find the call, then write our own. Two homes:
     `ctx.blacklisted` (`WC_compCache.hostLocked`), its junk mark as a junk
     signal (`hostMarkedJunk`), and its own junk sale switched off while
     `DB.sellAtVendor` is on.
-- `WoWClearance_Daylight.lua` (loads last): the look, a plugin section in
-  its options whose rows read and write our own DB (get / set, one copy of
-  each setting), `/dui wc`, a broker data text, and window movers.
+- `WoWClearance_Daylight.lua` (loads last): a plugin section in its
+  options whose rows read and write our own DB (get / set, one copy of
+  each setting), `/dui wc`, a broker data text, and window movers. It does
+  not restyle WC's windows; the player's skin addon does that.
 
 Traps, each of which cost a round trip:
 
-- **Saved variables are nil at file scope.** `WoWClearanceDB.daylightLook`
-  is read inside the skin callback. A file-scope check always saw nil and
-  the off switch did nothing.
+- **Saved variables are nil at file scope.** Read `WoWClearanceDB` /
+  `NS.DB` inside callbacks (option get / set, PLAYER_LOGIN), never when
+  the file runs. A file-scope check always sees nil.
 - **`me.Wrap` / `me.Hook` targets are not promised stable.** Paint,
-  Attach, RegisterSkin, RegisterMover, RegisterCommand and the options
+  Attach, RegisterMover, RegisterCommand and the options
   rows are. Every lookup on the host's module tables is type-checked, and
   a miss leaves WoWClearance behaving as if the host were absent.
 - **A `.toc` file-list change needs a full client restart**, not `/reload`.
@@ -1971,7 +1972,7 @@ Allowed alternatives when integration code genuinely needs to be discussed:
 
 The runtime detection still calls the specific global (`_G.Bagnon`, `LibStub("AceAddon-3.0"):GetAddon("AdiBags")`, etc.) - that's necessary for the API to work - but the comment explaining what's happening uses neutral framing.
 
-**One deliberate exception: DaylightUI (owner's decision, 2026-11-14).** It may be named in `WoWClearance_Daylight.lua`, the "Use DaylightUI look" toggle and its tooltip, the bag adapter's detection, and the docs that describe them. Do not neutralise those in a cleanup.
+**One deliberate exception: DaylightUI (owner's decision, 2026-11-14).** It may be named in `WoWClearance_Daylight.lua` (its options section, data text and movers), the bag adapter's detection, and the docs that describe them. Do not neutralise those in a cleanup.
 
 **Existing mentions stay.** Pre-v2.29.0 comments (now in `WoWClearance_Events.lua` and the split files) and entries in `NOTICE.md` / EbonClearance's `CHANGELOG.md` remain untouched. The rule is forward-only.
 

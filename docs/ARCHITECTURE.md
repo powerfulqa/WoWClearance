@@ -92,7 +92,7 @@ every call site.
 | [WoWClearance_Tooltip.lua](../WoWClearance_Tooltip.lua) | Bag-item tooltip annotations. Since v2.71.2 it reads all state through `Decision.buildTooltipCtx` and its labels are guarded by `Decision.sell`'s verdict (equipped-honesty fix-up + sentinel line); only the per-branch label text is local. |
 | [WoWClearance_BagContextMenu.lua](../WoWClearance_BagContextMenu.lua) | Alt+Right-Click bag-item quick-action popup. Stands down on a host bag UI whose own menu carries a row for it (`WC_compCache.hostOwnsItemMenu`). |
 | [WoWClearance_Window.lua](../WoWClearance_Window.lua) | The standalone settings window (sidebar + hosted panels), `NS.SkinWindow`, and the single launcher page in the game's Settings. Must load before any file that calls `NS.SkinWindow` at file scope. |
-| [WoWClearance_Daylight.lua](../WoWClearance_Daylight.lua) | Optional DaylightUI integration that is not about bags: its look on WC's windows, panels and item menu (`WoWClearanceDB.daylightLook`), a WC section in its options, `/dui wc`, a data text, and window movers. Loads last; does nothing without DaylightUI. |
+| [WoWClearance_Daylight.lua](../WoWClearance_Daylight.lua) | Optional DaylightUI integration that is not about bags: a WC section in its options, `/dui wc`, a data text, and window movers. WC's windows are not restyled here; a skin addon does that. Loads last; does nothing without DaylightUI. |
 | [WoWClearance_BugReport.lua](../WoWClearance_BugReport.lua) | Diagnostic snapshot builder + display frame (`/wc bugreport`). |
 | [WoWClearance_HistoryWindow.lua](../WoWClearance_HistoryWindow.lua) | The interactive Sold History window (`/wc history`, v2.57.0): sell/delete log with All/Sold/Deleted filters + search, over `NS.recentSoldLog` / `NS.recentDeletedLog`. Since v0.6.0 those tables are saved per character (`DB.soldHistory`, loaded at login by `WC_compCache.loadSoldHistory`). |
 
@@ -141,7 +141,7 @@ anything that looks like dead code or a bug.
 | Add a `/wc` subcommand | the slash handler in `Events.lua` (and a row in `README.md`) |
 | Change a bag border or tooltip annotation | `BagDisplay.lua` / `Tooltip.lua` |
 | Support another bag UI, or change the DaylightUI bag integration | a `try...Host` adapter in `BagDisplay.lua`'s `installHostBagBorderHook` |
-| Change the DaylightUI look, options section, data text or movers | `Daylight.lua` |
+| Change the DaylightUI options section, data text or movers | `Daylight.lua` |
 | Send an addon-to-addon message | `NS.Comms` in `Comms.lua` |
 | Add or align a row on a stats surface | `NS.MakeStatRow` in `PanelWidgets.lua`; the refresh body lives in `MainPanel.lua` (`NS.RefreshStats`) |
 
