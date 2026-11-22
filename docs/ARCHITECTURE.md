@@ -8,13 +8,14 @@
 A bird's-eye map of where things live, for a contributor or AI agent landing
 in the repo. This is a map, not a manual: it tells you which file to open, not
 how every function works. For the deep reference (Lua 5.1 constraints, gotchas,
-refactoring traps, comms/guild-share internals) read
+refactoring traps, comms internals) read
 [ADDON_GUIDE.md](ADDON_GUIDE.md). For deferred work, read
 [CODE_REVIEW.md](CODE_REVIEW.md).
 
 WoWClearance is a bag manager for WoW: Forever (Lua 5.1, as every WoW client
-runs): it vendors, deletes, tracks loot, protects items by rule, and runs
-profession processing. No external libraries; all Blizzard APIs.
+runs): it vendors, deletes, protects items by rule, and runs profession
+processing. Loot tracking lives in an optional sibling addon,
+`WoWClearance_Loot` (see below). No external libraries; all Blizzard APIs.
 
 ## How the files fit together
 
@@ -41,11 +42,7 @@ from `Bindings.xml`.
 | File | Owns |
 |------|------|
 | [WoWClearance_Events.lua](../WoWClearance_Events.lua) | The single event frame, the `/wc` slash commands, and the residual glue. Adding an event = `RegisterEvent` + a branch here, never a new frame. Also where every Interface Options panel is registered centrally. |
-| [WoWClearance_Comms.lua](../WoWClearance_Comms.lua) | `NS.Comms` addon-to-addon transport + the version-update gossip. |
-| [WoWClearance_GuildShare.lua](../WoWClearance_GuildShare.lua) | Opt-in, anonymous-by-default guild/group stats sharing (a `NS.Comms` consumer). |
-| [WoWClearance_RealmComms.lua](../WoWClearance_RealmComms.lua) | `NS.RealmComms` - realm transport, sibling of `NS.Comms`: addon messages (prefix `WCLRS`) on a temporary custom channel (rebuilt v0.6.0, PORT_STATUS work item 7). Joined only by a player who turned on "Stats - Server", left on opt-out; never at login. Reaches your own underlying realm only. |
-| [WoWClearance_LootHistory.lua](../WoWClearance_LootHistory.lua) | The Loot Log's History view store: an account-wide ring of the last 20000 pickups, saved as packed strings with a decoded in-memory mirror, plus the locale-safe group-loot chat parser. Fed by `WC_BumpLoot` (own loot) and the hub's `CHAT_MSG_LOOT` branch (group loot). Loads after Events. |
-| [WoWClearance_ServerShare.lua](../WoWClearance_ServerShare.lua) | The realm-wide anonymous stats odometer (a `NS.RealmComms` consumer). Aggregates per sender, so a re-send never double-counts. |
+| [WoWClearance_Comms.lua](../WoWClearance_Comms.lua) | `NS.Comms` addon-to-addon transport + the version-update gossip (and the Loot module's Stats - Guild; Stats - Server was removed in v0.9.0). |
 
 ### Interface Options panels (feature UI)
 
@@ -60,9 +57,7 @@ One file per panel (or closely-related pair). All register centrally in
 [ProtectionPanel](../WoWClearance_ProtectionPanel.lua) ·
 [ItemHighlightingPanel](../WoWClearance_ItemHighlightingPanel.lua) ·
 [ProfilesPanel](../WoWClearance_ProfilesPanel.lua) (hosts List Profiles, Settings Profiles, and Import/Export) ·
-[StatsPanel](../WoWClearance_StatsPanel.lua) ·
-[GuildPanel](../WoWClearance_GuildPanel.lua) ·
-[ServerStatsPanel](../WoWClearance_ServerStatsPanel.lua) ·
+[StatsPanel](../WoWClearance_StatsPanel.lua) (sold-side stats only) ·
 [QuickstartPanel](../WoWClearance_QuickstartPanel.lua) ·
 [HelpPanel](../WoWClearance_HelpPanel.lua)
 
@@ -98,6 +93,34 @@ every call site.
 
 `Bindings.xml` defines keybinds that call the `WoWClearance_*` global handlers.
 
+### Optional Loot module (`WoWClearance_Loot/`, v0.9.0)
+
+A separate addon in its own folder with its own
+[`.toc`](../WoWClearance_Loot/WoWClearance_Loot.toc)
+(`## Dependencies: WoWClearance`), shipped in the same zip and on by default.
+The Main panel's "Loot module" checkbox turns it on or off (reload needed).
+It reaches the core `NS` through `C_AddOns.GetAddOnLocalTable("WoWClearance")`
+(allowed by `## AllowAddOnTableAccess: 1` in the core `.toc`); module files
+read it as `select(2, ...).core`. No new global and no new SavedVariables: its
+data stays in `WoWClearanceDB` / `WoWClearanceAccountDB`, seeded by the core
+`EnsureDB`.
+
+| File | Owns |
+|------|------|
+| [WoWClearance_LootCapture.lua](../WoWClearance_Loot/WoWClearance_LootCapture.lua) | Loot bag-delta capture, looted coin, `NS.StampBestGPH`, zone attribution, the Shift+L claim, and the module's one event frame (`LOOT_READY`, `LOOT_CLOSED`, `PLAYER_MONEY`, `CHAT_MSG_LOOT`, `PLAYER_LOGIN`). Loads first; sets `own.core`. |
+| [WoWClearance_LootHistory.lua](../WoWClearance_Loot/WoWClearance_LootHistory.lua) | The Loot Log's History view store: an account-wide ring of the last 20000 pickups, saved as packed strings with a decoded in-memory mirror, plus the locale-safe group-loot chat parser. |
+| [WoWClearance_LootWindow.lua](../WoWClearance_Loot/WoWClearance_LootWindow.lua) | The Loot Log window (`NS.ToggleLootWindow`). |
+| [WoWClearance_LootPanel.lua](../WoWClearance_Loot/WoWClearance_LootPanel.lua) | The "Stats - Loot" panel (`WoWClearanceOptionsLoot`): gold looted, session / best gold per hour, top zones, Loot Log button. |
+| [WoWClearance_GuildShare.lua](../WoWClearance_Loot/WoWClearance_GuildShare.lua) | `NS.GuildShare`: opt-in, anonymous-by-default "Stats - Guild" pooling over `NS.Comms` (guild + group). |
+| [WoWClearance_GuildPanel.lua](../WoWClearance_Loot/WoWClearance_GuildPanel.lua) | The "Stats - Guild" panel (`WoWClearanceOptionsGuild`). |
+
+Core-side hooks, each nil-checked at the call site so the core runs the same
+without the module: `WC_compCache.scanLootDelta()` (BAG_UPDATE flush),
+`WC_compCache.onSoldCopper(copper)` (manual sale + `FinishRun`),
+`WC_compCache.onResetSession()`. The core exposes `WC_compCache.bumpStat` /
+`bumpStatBucket` for it. `/wc loot` and the Loot Log key binding stay in core
+and print a hint when the module is off.
+
 ## Boundaries (the things that must stay true)
 
 These are the invariants an agent should not "simplify" across. Many are pinned
@@ -105,9 +128,9 @@ in code with `WC-TRAP:` markers; run `grep -rn "WC-TRAP:"` before touching
 anything that looks like dead code or a bug.
 
 - **One event frame.** It lives in `Events.lua`. Features do not create their own;
-  they expose a handler and the hub calls it (Loot History's `OnChatMsgLoot`).
-  The two chat transports (`Comms.lua`, `RealmComms.lua`) are the exceptions:
-  each owns one frame for its own chat event.
+  they expose a handler or hook and the hub calls it. The exceptions: the
+  chat transport (`Comms.lua`) owns one frame for `CHAT_MSG_ADDON`, and the
+  Loot module, a separate addon, owns one frame for its loot events.
 - **The Events main chunk is at Lua 5.1's 200-locals cap.** New state goes on
   `WC_compCache` or `NS`, not new file-scope locals.
 - **Cross-file state goes through `NS`.** New globals are not added.
@@ -135,7 +158,7 @@ anything that looks like dead code or a bug.
 | Add a profession-processing rule | `Process.lua` |
 | Add a settings checkbox | the relevant `*Panel.lua` + an `EnsureDB` default in `Events.lua` |
 | Add a keep rule | a veto in `Decision.sell` (decide whether it stops only the auto rules, like the tome and Forever protections), a ctx thunk in both adapters, a detector in `Protection.lua`, fixtures in `tests/test_decision.lua` |
-| Change the Loot Log History store | `LootHistory.lua` (+ `tests/test_loothistory.lua`); the view is in `StatsPanel.lua` |
+| Change the Loot Log, looted coin, gold per hour or zones | the Loot module: `WoWClearance_Loot/` (`LootCapture.lua` records, `LootHistory.lua` + `tests/test_loothistory.lua` stores, `LootWindow.lua` / `LootPanel.lua` show) |
 | Add a whole new options panel | new `*Panel.lua` + register it centrally in `Events.lua` |
 | React to a new game event | `RegisterEvent` + a branch in `Events.lua` (not a new frame) |
 | Add a `/wc` subcommand | the slash handler in `Events.lua` (and a row in `README.md`) |
@@ -150,9 +173,9 @@ anything that looks like dead code or a bug.
 From the repo root:
 
 ```
-lua tests/run_all.lua          # all ten invariant suites in one shot
-luac -p WoWClearance_*.lua     # syntax check every shipped file (luac5.1 in CI)
-luacheck *.lua                  # 0 warnings expected (runs in CI; see CLAUDE.md)
+lua tests/run_all.lua                                 # all nine invariant suites in one shot
+luac -p WoWClearance_*.lua WoWClearance_Loot/*.lua    # syntax check every shipped file (luac5.1 in CI)
+luacheck WoWClearance_*.lua WoWClearance_Loot/*.lua   # 0 warnings expected (runs in CI; see CLAUDE.md)
 ```
 
 CI ([.github/workflows/test.yml](../.github/workflows/test.yml)) runs the syntax

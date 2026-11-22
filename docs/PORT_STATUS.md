@@ -6,8 +6,9 @@ Living document. Update it as each work item lands.
 > repository was published fresh, so the commit hashes quoted in this
 > file belong to the private port history and do not resolve here. File,
 > suite and count figures inside dated entries are as they were on that
-> date; the current ones are in [ARCHITECTURE.md](ARCHITECTURE.md) (36
-> `.lua` files, 10 test suites). `docs/INGAME_VERIFICATION.md`, the
+> date; the current ones are in [ARCHITECTURE.md](ARCHITECTURE.md) (30
+> core `.lua` files plus 6 in the optional `WoWClearance_Loot` module, 9
+> test suites, as of v0.9.0). `docs/INGAME_VERIFICATION.md`, the
 > in-game test protocol the entries below cite by phase and step, was the
 > owner's own checklist and is not in this repository.
 
@@ -226,7 +227,8 @@ And one design rule, which matters most where this addon can destroy things:
 | 4 | Container and item layer | **Done**; equipment sets ported, one return shape still unmeasured |
 | 5 | Options UI migration | **Done** |
 | 6 | Long tail | **Done** (colour picker cancel payload measured; equipment sets ported) |
-| 7 | `WoWClearance_RealmComms.lua` | **Rebuilt (owner's decision, 2026-10-10)**; transport unmeasured in game |
+| 7 | `WoWClearance_RealmComms.lua` | **Closed by removal** (v0.9.0, owner's decision 2026-11-22) |
+| 8 | Optional `WoWClearance_Loot` module | **Done** (v0.9.0); two in-game checks open |
 
 ### 1. Rebrand (done)
 
@@ -260,7 +262,7 @@ bag-full. Two files were deleted outright and two suites' worth of
 companion coverage went with them.
 
 Things deliberately kept, each verified independent rather than assumed:
-Fast Loot and auto-open containers (stock looting, self-gating), free-bag-slot
+Fast Loot (later removed in v0.9.0) and auto-open containers (stock looting, self-gating), free-bag-slot
 counting (minimap + bug report), the general-purpose `WC_Delay` timer, the
 profession-cast spell set (Process Bags counters), and the decision core's
 `junkOnly` parameter (a core concept with its own safety fixtures; nothing
@@ -548,31 +550,40 @@ recording because the companion check ("did the scan find any frames at
 all?") did **not** catch this - a guard can be non-vacuous in one direction
 and vacuous in the other.
 
-### 7. RealmComms: rebuilt on addon messages (2026-10-10)
+### 7. RealmComms: closed by removal (v0.9.0)
 
-The owner chose to keep "Stats - Server" and rebuild its transport. The
-3.3.5a version posted chat TEXT with `SendChatMessage` on a hidden channel
-joined by `JoinChannelByName`. On Forever that could not work: channel text
-needs a hardware event, so a timer-driven send is blocked
-(`ADDON_ACTION_BLOCKED`, `HasRestrictions` on `SendChatMessage`), and
-`CHAT_MSG_CHANNEL` is secret in a chat lockdown, which the old receive path
-compared unguarded. The Refresh button also joined without opt-in, and
-opting out never left the channel.
+The realm-channel transport was rebuilt on 2026-10-10 as addon messages
+(prefix `WCLRS`) on a temporary custom channel, because channel chat text
+needs a hardware event on Forever. It never got measured in game. On
+2026-11-22 the owner removed "Stats - Server", and the transport went
+with it:
+`WoWClearance_RealmComms.lua`, `_ServerShare.lua`, `_ServerStatsPanel.lua`,
+`test_servershare.lua`, and the channel APIs in `.luacheckrc`. `EnsureDB`
+clears the old `shareServerData` and `shareServerDataDefaultBumped` keys at
+load. "Stats - Guild" (guild + group addon messages, no channel) was kept
+and moved into the Loot module (item 8). Nothing is left to measure. One fact from the work is worth
+keeping: a custom channel reaches **only your own underlying realm**
+(measured 2026-10-07).
 
-Now: `C_ChatInfo.SendAddonMessage(prefix "WCLRS", ..., "CHANNEL", n)` on a
-**temporary** custom channel (`JoinTemporaryChannel`), received on
-`CHAT_MSG_ADDON` with `canaccessvalue` and `channel == "CHANNEL"` checks;
-sends wait out `InChatMessagingLockdown`; the join waits while `/1` is
-empty; opting out calls `LeaveChannelByName`; nothing joins or sends unless
-`shareServerData` is on. Facts it rests on (wow-forever-api skill, chat
-reference): addon messages on a custom channel deliver (2026-09-19); a
-channel reaches **only your own underlying realm** (2026-10-07), so
-"realm-wide" is one realm copy and `Success` comes back either way;
-permanent channels keep their `/N` between sessions.
+### 8. Optional Loot module (v0.9.0)
 
-Still unmeasured: the join, the echo used by `/wc realmtest`, and the
-lockdown behaviour on this transport. Shipping it on a live realm remains
-the owner's call; it is default OFF and opt-in.
+The same change moved everything that records or shows looting into a
+sibling addon, `WoWClearance_Loot` (repo folder `WoWClearance_Loot/`, own
+`.toc` with `## Dependencies: WoWClearance`, shipped in the same zip, on by
+default). It reaches the core namespace through
+`C_AddOns.GetAddOnLocalTable("WoWClearance")`, enabled by
+`## AllowAddOnTableAccess: 1` in `WoWClearance.toc`, and adds no global and
+no SavedVariables. The same release removed Fast Loot and the item-level
+numbers on the character sheet, inspect and vendor windows (bag slots
+keep them). Layout and hooks: ARCHITECTURE.md and ADDON_GUIDE.md.
+
+Open in-game checks:
+
+- **`GetAddOnLocalTable` from a third-party addon.** Unmeasured. If it
+  returns nil, the module prints one line in chat and does nothing; the
+  core addon is unaffected.
+- **The Main panel's "Loot module" toggle** (`C_AddOns.EnableAddOn` /
+  `DisableAddOn` plus the reload popup). Unmeasured.
 
 ## API mapping
 

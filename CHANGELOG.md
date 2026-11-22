@@ -6,6 +6,41 @@ release history is in [its own changelog](https://github.com/powerfulqa/EbonClea
 Version numbers there belong to that project and do not continue into
 this one.
 
+### v0.9.0
+
+Loot tracking and guild stats move into an optional module that you can
+turn off, and a few extras are gone.
+
+- **New: the Loot module.** The Loot Log, gold looted, gold per hour,
+  your top farming zones and Stats - Guild now live in
+  `WoWClearance_Loot`, a second addon in the same download. It is on by default, so nothing changes unless you
+  turn it off. Turn it off or on with the new **Loot module** box on the
+  main page, or in the game's AddOn list, then reload. Your loot data is
+  kept while it is off.
+- **New page: Stats - Loot.** Gold looted, gold per hour and Top Zones
+  moved here from Stats - Personal, with the Loot Log button.
+- **Stats - Personal shows what WoWClearance did.** Gold made, items sold
+  and deleted, repairs, and Net (gold made minus repairs). The Last 7
+  Days rows count the same.
+- **Stats - Guild moved to the Loot module.** It works as before: off
+  until you tick "Share my farming data with my guild".
+- **Removed: Stats - Server.** It shared anonymous totals with the whole
+  realm through a chat channel, and is gone along with its switch.
+  Update notices from your guild and group still work.
+- **Removed: Fast Loot.** Use a looting addon if you want it.
+- **Removed: item levels on the character sheet, inspect and vendor
+  window.** Item levels on gear in your bags stay (Item Highlighting).
+- The Quickstart question about Fast Loot is gone, and the item level
+  question is now a plain yes or no for your bags.
+- **Your realm shows again.** Since 2026-11-20 the game gives addons an
+  empty realm name. Bug reports, Sell Info and the Loot Log showed
+  "Name-" with nothing after it, and the Loot Log could mix up your own
+  name with a group member's. They now use the realm saved with your
+  character's lists.
+- **Clearer bug reports.** `/wc bugreport` now says whether the Loot
+  module is on and whether you share with your guild, and addon versions
+  no longer show as "vv1.2.3".
+
 ### v0.8.7
 
 - **No more DaylightUI look.** WoWClearance no longer restyles its own

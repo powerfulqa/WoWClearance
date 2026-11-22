@@ -67,9 +67,11 @@ internet tutorial disagree, follow the guide.
 6. **One event-dispatch frame for features.** Feature events hang off
    `f` near the bottom of `WoWClearance_Events.lua`. Do not create a new
    event frame for a new feature - add to the dispatch. The only
-   exceptions are the self-contained transports (`NS.Comms` owns
-   `CHAT_MSG_ADDON` for its prefix, `NS.RealmComms` for its own) and the
-   Process Bags cast drivers in `WoWClearance_ProcessBagsPanel.lua`.
+   exceptions are the self-contained transport (`NS.Comms` owns
+   `CHAT_MSG_ADDON` for its prefix), the Process Bags cast drivers in
+   `WoWClearance_ProcessBagsPanel.lua`, and the optional
+   `WoWClearance_Loot` module, which is a separate addon and owns one
+   frame for its loot events.
 7. **Print through `PrintNice` or `PrintNicef`.** Never call
    `DEFAULT_CHAT_FRAME:AddMessage` directly outside those helpers.
 8. **Saved variables always go through `EnsureDB()`.** New fields must
@@ -155,7 +157,8 @@ v2.34.x (see the `PER_CHAR_FIELDS` block near the top of
   safety net (an older client looking for `DB.blacklist` etc. still
   finds its pre-migration baseline at the top level).
 - `WoWClearanceAccountDB` is account-wide: the account Sell List, the
-  Allow Sell table, account stats, and the Loot Log History ring.
+  Allow Sell table, account stats, and the Loot Log History ring (written
+  by the optional Loot module; the core `EnsureDB` still seeds it).
 
 Inside Lua, `DB` is a metatable proxy. Reads / writes for fields
 listed in `PER_CHAR_FIELDS` route to `chars[charKey]`; everything else
@@ -229,9 +232,8 @@ WoW's embedded Lua is still 5.1 on Forever, and CI runs the suites under
   the equipment-set sync, porting lesson 9).
 
 What changed is the client, not the language: `C_Timer` now exists on
-Forever, but the addon keeps its own `WC_Delay` (and the paced OnUpdate
-queue in `NS.RealmComms`) because they work and their error routing is
-deliberate. Using `C_Timer.After` for new code is fine; verify any other
+Forever, but the addon keeps its own `WC_Delay` because it works and its
+error routing is deliberate. Using `C_Timer.After` for new code is fine; verify any other
 "modern" API before assuming it.
 
 ## Architecture
@@ -244,7 +246,7 @@ deliberate. Using `C_Timer.After` for new code is fine; verify any other
 
 ### File layout
 
-The `.toc` is the load-order source of truth. Current order (36 files: the 34 numbered below, plus `WoWClearance_Kit.lua` loaded before all of them and `WoWClearance_Daylight.lua` loaded after all of them):
+The `.toc` is the load-order source of truth. Current order (30 files: the 28 numbered below, plus `WoWClearance_Kit.lua` loaded before all of them and `WoWClearance_Daylight.lua` loaded after all of them):
 
 | # | File | Role |
 |---|------|------|
@@ -254,21 +256,65 @@ The `.toc` is the load-order source of truth. Current order (36 files: the 34 nu
 | 4 | `WoWClearance_Protection.lua` | Detection helpers: tome / Resilience marker scan, quest-item and appearance / tradeable predicates. |
 | 5 | `WoWClearance_Process.lua` | Process Bags engine (Disenchant / Mill / Prospect / Lockpick). |
 | 6 | `WoWClearance_PanelInfra.lua` | `NS.OptionsHost`, the options-category registry, the reactive width registry, `WC_compCache.initPanel`. |
-| 7-17 | `ProcessBagsPanel`, `MerchantPanel`, `SellListPanels`, `KeepDeletePanels`, `ProtectionPanel`, `ItemHighlightingPanel`, `ProfilesPanel`, `MainPanel`, `StatsPanel`, `GuildPanel`, `ServerStatsPanel` | One file per options panel (or related pair). They create frames at load and build lazily on first OnShow. |
-| 18-19 | `WoWClearance_PanelWidgets.lua`, `WoWClearance_ListWidget.lua` | Shared widget primitives and `CreateListUI`. |
-| 20 | `WoWClearance_Window.lua` | The standalone config window, `NS.SkinWindow`, and the single Settings launcher page. Must load BEFORE any file that calls `NS.SkinWindow` at file scope. |
-| 21 | `WoWClearance_QuickstartPanel.lua` | The Quickstart modal (calls `NS.SkinWindow` at file scope). |
-| 22 | `WoWClearance_Events.lua` | The event hub, `EnsureDB` / `EnsureAccountDB`, the DB proxy, the vendor loop, slash commands, `Bindings.xml` handlers, and most residual glue. |
-| 23 | `WoWClearance_LootHistory.lua` | `NS.LootHistory`: the persisted per-pickup Loot Log History ring (v0.6.0). Loads after Events. |
-| 24 | `WoWClearance_HistoryWindow.lua` | The Sold History window over `NS.recentSoldLog` / `NS.recentDeletedLog`. |
-| 25-28 | `WoWClearance_Comms.lua`, `_RealmComms.lua`, `_GuildShare.lua`, `_ServerShare.lua` | `NS.Comms` transport + version gossip, the realm-channel transport (rebuilt in v0.6.0, see below), and their two consumers. |
-| 29-34 | `BagDisplay`, `BugReport`, `Minimap`, `Tooltip`, `BagContextMenu`, `HelpPanel` | Bag-slot tint + `/wc sellinfo` trace, `/wc bugreport`, minimap + compartment entry, tooltip annotations, Alt+Right-Click menu, Help / FAQ. |
+| 7-15 | `ProcessBagsPanel`, `MerchantPanel`, `SellListPanels`, `KeepDeletePanels`, `ProtectionPanel`, `ItemHighlightingPanel`, `ProfilesPanel`, `MainPanel`, `StatsPanel` | One file per options panel (or related pair). They create frames at load and build lazily on first OnShow. |
+| 16-17 | `WoWClearance_PanelWidgets.lua`, `WoWClearance_ListWidget.lua` | Shared widget primitives and `CreateListUI`. |
+| 18 | `WoWClearance_Window.lua` | The standalone config window, `NS.SkinWindow`, and the single Settings launcher page. Must load BEFORE any file that calls `NS.SkinWindow` at file scope. |
+| 19 | `WoWClearance_QuickstartPanel.lua` | The Quickstart modal (calls `NS.SkinWindow` at file scope). |
+| 20 | `WoWClearance_Events.lua` | The event hub, `EnsureDB` / `EnsureAccountDB`, the DB proxy, the vendor loop, slash commands, `Bindings.xml` handlers, and most residual glue. |
+| 21 | `WoWClearance_HistoryWindow.lua` | The Sold History window over `NS.recentSoldLog` / `NS.recentDeletedLog`. |
+| 22 | `WoWClearance_Comms.lua` | `NS.Comms` transport + version-update gossip. |
+| 23-28 | `BagDisplay`, `BugReport`, `Minimap`, `Tooltip`, `BagContextMenu`, `HelpPanel` | Bag-slot tint + `/wc sellinfo` trace, `/wc bugreport`, minimap + compartment entry, tooltip annotations, Alt+Right-Click menu, Help / FAQ. |
 
 Two load-order failures in this port each blanked whole files: a
 file-scope call into an `NS` function defined by a file that loaded later
 hits nil, and the throw aborts the rest of the calling file. If a file
 calls something at FILE SCOPE, its provider must load first; calls made
 inside functions that run later resolve at call time and do not care.
+
+### The optional Loot module (`WoWClearance_Loot`, v0.9.0)
+
+Everything that records or shows what you LOOT lives in a sibling addon in
+the repo folder `WoWClearance_Loot/`, with its own `.toc`
+(`## Dependencies: WoWClearance`). The release zip ships it as a second
+top-level folder; it is on by default, and the Main panel's "Loot module"
+checkbox enables or disables it (`C_AddOns.EnableAddOn` / `DisableAddOn`,
+then a reload popup). Its files, in load order:
+
+| File | Role |
+|------|------|
+| `WoWClearance_LootCapture.lua` | Loot bag-delta capture, looted coin, `NS.StampBestGPH`, zone attribution, the Shift+L claim. Owns the module's one event frame (`LOOT_READY`, `LOOT_CLOSED`, `PLAYER_MONEY`, `CHAT_MSG_LOOT`, `PLAYER_LOGIN`). Loads first and sets `own.core`. |
+| `WoWClearance_LootHistory.lua` | `NS.LootHistory`: the persisted per-pickup Loot Log History ring (v0.6.0). |
+| `WoWClearance_LootWindow.lua` | The Loot Log window (`NS.ToggleLootWindow`). |
+| `WoWClearance_LootPanel.lua` | The "Stats - Loot" panel (frame `WoWClearanceOptionsLoot`): gold looted, session / best gold per hour, top zones, and a Loot Log button. |
+| `WoWClearance_GuildShare.lua` | `NS.GuildShare`: "Stats - Guild" pooling over `NS.Comms` (guild + group addon messages, opt-in `shareGuildData`, anonymous unless `shareGuildName`). Uses the core `Comms.CanSend` throttle check. |
+| `WoWClearance_GuildPanel.lua` | The "Stats - Guild" panel (frame `WoWClearanceOptionsGuild`). |
+
+How it hangs together:
+
+- **Namespace.** The module reaches the core `NS` through
+  `C_AddOns.GetAddOnLocalTable("WoWClearance")`, which works because
+  `WoWClearance.toc` sets `## AllowAddOnTableAccess: 1`. LootCapture stores
+  it on the module's own table; the other module files read it as
+  `select(2, ...).core`. No new global.
+- **No new SavedVariables.** Data stays in `WoWClearanceDB` /
+  `WoWClearanceAccountDB`, and the core `EnsureDB` still seeds the loot
+  fields, so turning the module off and on loses nothing and needs no
+  migration.
+- **Core hooks, each nil-checked at the core call site**, so the core runs
+  unchanged without the module: `WC_compCache.scanLootDelta()` (the
+  BAG_UPDATE flush), `WC_compCache.onSoldCopper(copper)` (a manual sale and
+  `FinishRun`), `WC_compCache.onResetSession()`. The core exposes
+  `WC_compCache.bumpStat` / `bumpStatBucket` for the module's counters.
+- **What stays in core:** `/wc loot` and the Loot Log key binding, which
+  print a hint when the module is off. `WC_PANEL_ORDER` lists
+  `WoWClearanceOptionsLoot` after Stats and skips it when absent. The core
+  Stats panel shows sold-side numbers only; its Net and Last 7 Days rows are
+  sold minus repairs.
+- **Tests and CI** cover both folders: the three source-scanning suites read
+  both `.toc` files, luacheck and `luac -p` include `WoWClearance_Loot/*.lua`,
+  and `release.yml` packages the folder and stamps its version.
+- Not yet measured in game: `GetAddOnLocalTable` access from a third-party
+  addon, and the Main panel toggle (PORT_STATUS open in-game checks).
 
 Within `WoWClearance_Events.lua` the rough order is still: cached API
 upvalues and forward declarations; the `PER_CHAR_FIELDS` /
@@ -293,10 +339,10 @@ Currently registered on the hub: `ADDON_LOADED`, `PLAYER_LOGOUT`,
 `MERCHANT_CLOSED`, `BAG_UPDATE`, `ITEM_LOCK_CHANGED`,
 `UNIT_SPELLCAST_SUCCEEDED` (player-only via `RegisterUnitEvent`),
 `PLAYER_EQUIPMENT_CHANGED`, `EQUIPMENT_SETS_CHANGED`, `SPELLS_CHANGED`,
-`PLAYER_REGEN_ENABLED`, `LOOT_READY`, `CHAT_MSG_LOOT` (Loot Log History,
-group members' loot) and `GROUP_ROSTER_UPDATE` (version gossip). Outside
-the hub: `CHAT_MSG_ADDON` (Comms and RealmComms, one prefix each), and
-`UNIT_SPELLCAST_START` / `PLAYER_REGEN_ENABLED` (Process Bags drivers).
+`PLAYER_REGEN_ENABLED` and `GROUP_ROSTER_UPDATE` (version gossip).
+Outside the hub: `CHAT_MSG_ADDON` (Comms), `UNIT_SPELLCAST_START` /
+`PLAYER_REGEN_ENABLED` (Process Bags drivers), and the Loot module's own
+frame (see above).
 
 `BAG_UPDATE` and `ITEM_LOCK_CHANGED` do no work inline; they arm the
 shared debounce frame (see "BAG_UPDATE handler must coalesce bursts").
@@ -328,7 +374,7 @@ fall into these groups (not exhaustive - `EnsureDB` is the full list):
   `settingsProfiles` (top-level bodies) + `activeSettingsProfile`
   (per-character pointer) for the v2.72.0 settings profiles.
 - **Settings**: `enabled` (per-character), `vendorInterval`,
-  `maxItemsPerRun`, `fastMode`, `autoOpenContainers`, `fastLoot`,
+  `maxItemsPerRun`, `fastMode`, `autoOpenContainers`,
   `repairGear`, `keepBagsOpen`, `enableDeletion`, `autoDeleteOnPickup`,
   `autoDeleteGreyOnLoot`, `protectAllTomes`, `protectUnlearnedTomes`,
   `protectUncollectedAppearances` and `protectTradeableLoot` (v0.6.0,
@@ -362,14 +408,17 @@ fall into these groups (not exhaustive - `EnsureDB` is the full list):
   `totalRepairs`, `totalRepairCopper`, `soldItemCounts`,
   `deletedItemCounts`, `inventoryWorthTotal`, `inventoryWorthCount`,
   `lootedItemCounts` (v2.46.0; per-character loot ledger, `itemID ->
-  quantity`, in `PER_CHAR_FIELDS`, drives the Loot Log's Character view).
+  quantity`, in `PER_CHAR_FIELDS`, drives the Loot Log's Character view;
+  written by the Loot module).
 - **History** (v0.6.0): `soldHistory` (per-character, in
   `PER_CHAR_FIELDS`) holds the Sold History rings. See "Persisted ring
   logs" under "Forever port patterns" for the shape and load order.
 - **Recipe selling** (v2.46.0): `sellKnownRecipes` (bool) +
   `sellKnownRecipeQualities` (`{[1..4] = bool}`). Learn-state is read
   per-character at decision time. See the "Sell Known Recipes" gotcha.
-- **UI**: `minimapButtonAngle`.
+- **UI**: `minimapButtonAngle`, `itemLevelOverlay` (`enabled`,
+  `fontSize`; item level on bag slots only since v0.9.0, which cleared the
+  old `bags` / `paperdoll` / `merchant` keys).
 
 `WoWClearanceAccountDB` (the `ADB` upvalue / `NS.ADB`) is a separate,
 account-wide table bootstrapped by `EnsureAccountDB()` (called from
@@ -382,8 +431,9 @@ the account loot mirror `accountStats.lootedItemCounts`),
 ring) and `lootLogKeyClaimed` (the one-shot Shift+L binding claim).
 
 In-memory only (not saved): `WC_session = { copper, sold, deleted,
-repairs, repairCopper }`, `WC_lootSession` (`itemID -> quantity`, the
-Loot Log's Session view), the "saved by re-check" log
+repairs, repairCopper }` (`NS.session`; the Loot module adds
+`lootCopper`), `NS.lootSession` (`itemID -> quantity`, the Loot Log's
+Session view, owned by the Loot module), the "saved by re-check" log
 (`NS.recentSavedLog`), and every `WC_compCache` cache. The Session
 counters reset on the Reset Session button or `/reload`.
 
@@ -712,7 +762,7 @@ and 15).
 ### Tests
 
 `lua tests/run_all.lua` runs every invariant suite and is the source of
-truth for the list (10 suites today; CI and the release gate both call
+truth for the list (9 suites today; CI and the release gate both call
 it). Use `lua5.1` to match CI. The suites:
 
 | Suite | Kind | Covers |
@@ -724,9 +774,8 @@ it). Use `lua5.1` to match CI. The suites:
 | `test_perf_guardrails.lua` | static | Perf, structure and wiring invariants (numbered Tests). |
 | `test_comment_hygiene.lua` | static | Comment watch-list counts stay at or below baseline. |
 | `test_comms_version.lua` | runtime + static | `parseVersion`, mandatory prefix registration, the measured-rejected event list. |
-| `test_guildshare.lua` | runtime + static | Guild-share codec and aggregation. |
-| `test_loothistory.lua` | runtime | `WoWClearance_LootHistory.lua` in isolation: the `CHAT_MSG_LOOT` parser, the ring buffer and the handler (v0.6.0). |
-| `test_servershare.lua` | runtime + static | Server odometer codec, per-sender aggregate, default-off. |
+| `test_loothistory.lua` | runtime | `WoWClearance_Loot/WoWClearance_LootHistory.lua` in isolation: the `CHAT_MSG_LOOT` parser, the ring buffer and the handler (v0.6.0). |
+| `test_guildshare.lua` | runtime + static | `WoWClearance_Loot/WoWClearance_GuildShare.lua` in isolation: payload encode / decode, aggregation merge, city-zone drop, reply gated on `shareGuildData`, panel in `WC_PANEL_ORDER`. |
 
 Any "nothing is missing" style check needs a non-vacuity floor: an empty
 input set satisfies every absence assertion (porting lesson 5).
@@ -793,10 +842,12 @@ worth knowing:
   blacklist > deleteList > whitelist).
 - `/wc bugreport` - diagnostic dump for issue reports.
 - `/wc highlight` - flip `DB.itemHighlighting`, the master switch over
-  bag borders and item levels (`NS.SyncItemHighlighting`). v0.8.0.
+  bag borders and bag-slot item levels (`NS.SyncItemHighlighting`). v0.8.0.
 - `/wc loot` - open the Loot Log window (`NS.ToggleLootWindow`). v2.46.0.
   Four views since v0.6.0: Session, Character, Account, and History (the
-  persisted per-pickup ring in `WoWClearance_LootHistory.lua`).
+  persisted per-pickup ring in `WoWClearance_LootHistory.lua`). The window
+  lives in the Loot module since v0.9.0; the command stays in core and
+  prints a hint when the module is off.
 - `/wc history` - opens the interactive Sold History window (`NS.ShowHistoryWindow` in
   `WoWClearance_HistoryWindow.lua`, v2.57.0; `NS.ShowSessionHistory` prefers it and falls back to
   the old copy-text dump if the module is absent). Reads the `NS.recentSoldLog` /
@@ -834,8 +885,10 @@ worth knowing:
 - `/wc minimap on|off|reset`, `/wc perf`, `/wc scandebug`,
   `/wc processdebug [clear]`, `/wc help` - minimap button control and
   diagnostics; see the README table.
-- `/wc commtest`, `/wc guildtest`, `/wc servertest`, `/wc realmtest` -
-  solo test harnesses for the comms layers (see "Addon comms").
+- `/wc commtest` - solo test harness for the comms layer (see "Addon
+  comms"). `/wc guildtest` injects simulated guild members (Loot module;
+  prints a hint when it is off). `/wc servertest` and `/wc realmtest` went
+  with Stats - Server in v0.9.0.
 - `/wcdebug` - debug info plus bag scan.
 
 Removed in the port: `/wc affixfallback`, `/wc affixdump`,
@@ -850,9 +903,11 @@ commands):
 - `WOWCLEARANCE_TOGGLE_ENABLED` → `WoWClearance_ToggleEnabled()`.
 - `WOWCLEARANCE_FORCE_SELL` → `WoWClearance_ForceSell()`.
 - `WOWCLEARANCE_TOGGLE_LOOTLOG` → `WoWClearance_ToggleLootLog()`. v2.46.0.
-  Since v0.6.0 `WC_compCache.claimLootLogKey` binds Shift+L to it once
+  Since v0.6.0 the Shift+L claim (in the Loot module's
+  `WoWClearance_LootCapture.lua` since v0.9.0) binds Shift+L to it once
   at first login, only if Shift+L is free and the Loot Log has no key
-  yet (recorded in `ADB.lootLogKeyClaimed`).
+  yet (recorded in `ADB.lootLogKeyClaimed`). The handler prints a hint
+  when the module is off.
 - `CLICK WoWClearanceProcessCastBtn:LeftButton` - the Process Bags cast
   button.
 
@@ -920,8 +975,8 @@ first consumer (the version-update nudge).
 `NS.Comms.RegisterHandler(msgType, fn)`. Sends go through
 `C_ChatInfo.SendAddonMessage`. One hidden frame owns `CHAT_MSG_ADDON`;
 it early-returns on a prefix mismatch and dispatches on the message type. The
-wire format is `msgType .. "\t" .. payload` under prefix `"WCLR1"`. A new shared
-feature (guild stats, etc.) adds a `RegisterHandler` call and nothing else.
+wire format is `msgType .. "\t" .. payload` under prefix `"WCLR1"`. A new
+consumer adds a `RegisterHandler` call and nothing else.
 
 **Forever constraints - several of these INVERT what the 3.3.5a code
 did, so read them before "restoring" anything from history:**
@@ -929,8 +984,8 @@ did, so read them before "restoring" anything from history:**
 - **`C_ChatInfo.RegisterAddonMessagePrefix` is MANDATORY.** On 3.3.5a
   every `CHAT_MSG_ADDON` was delivered and filtering by prefix was the
   whole job. On Forever the client never delivers `CHAT_MSG_ADDON` for an
-  unregistered prefix, so without the registration the version gossip and
-  the guild share load cleanly and never fire. `tests/test_comms_version.lua`
+  unregistered prefix, so without the registration the version gossip
+  loads cleanly and never fires. `tests/test_comms_version.lua`
   asserts the prefix IS registered before the listener attaches (that
   assertion was inverted during the port).
 - **Channels:** `PARTY` / `RAID` / `GUILD` / `BATTLEGROUND` / `WHISPER`.
@@ -971,58 +1026,20 @@ given core), and a simulated higher-version peer exercises the real nudge path
 and the opt-out. Reach for it first when a comms feature "does nothing" on a new
 realm.
 
-### Guild stats sharing (`NS.GuildShare`, v2.40.0)
+### Stats - Guild moved; Stats - Server removed (v0.9.0)
 
-`WoWClearance_GuildShare.lua` is the second `NS.Comms` consumer. It pools
-guild/group stats into a transient, session-only aggregate
-(`WC_compCache.guildAgg`) - never saved, re-polled each query.
+"Stats - Guild" (`NS.GuildShare`, v2.40.0) now lives in the optional Loot
+module (`WoWClearance_Loot/WoWClearance_GuildShare.lua` + `_GuildPanel.lua`,
+pinned by `tests/test_guildshare.lua`). It is still opt-in (`shareGuildData`,
+default off) and anonymous unless `shareGuildName`; both keys stay in core
+`EnsureDB`. It rides `NS.Comms`, which also carries the version gossip.
 
-- **Message types:** `GREQ` (broadcast on GUILD/PARTY/RAID when the panel opens
-  or Refresh is clicked, throttled to match the comms send throttle) and `GDAT`
-  (a whisper reply, sent only if `WoWClearanceDB.shareGuildData`). Payload
-  sections, split on `|` and dispatched by prefix (order-independent):
-  `stats:totalCopper,itemsSold,bestGPH`, optional `name:<player>` (only if
-  `shareGuildData` AND `shareGuildName`), `qual:<q>=<count>;...` (per-rarity sold
-  counts), `items:<id>~<name>=<count>;...` (top-3; the id powers the panel hover
-  tooltip, the name displays so no `GetItemInfo` cache dependency), and
-  `zones:<name>=<copper>;...` (top-5). Capped under 255 bytes; **zones trim
-  first** since items/stats/quality are small and wanted.
-- **Aggregation:** items pool by id (keeping the name), zones by name, quality
-  summed per rarity; the best-GPH holder's name is tracked (nil if anonymous),
-  and consenting names collect into a set for the "Shared by" line.
-- **Anonymity** is at the display/storage layer: the `GDAT` sender is never
-  stored or shown. `shareGuildName` is a dependent sub-toggle of
-  `shareGuildData` (disabled/greyed when not sharing).
-- **Load order matters:** `WoWClearance_GuildPanel.lua` ("Stats - Guild") loads
-  BEFORE `WoWClearance_Events.lua` and `WoWClearance_Window.lua`, so its frame
-  exists when the panel order lists (`WC_PANEL_ORDER`, `NS.SettingsPanelOrder`)
-  place it right after "Stats - Personal"; its `initPanel`/widgets
-  are deferred to OnShow, so the early load only creates the frame and sets
-  `NS.RefreshGuildPanel`. `WoWClearance_GuildShare.lua` loads after
-  `WoWClearance_Comms.lua` (it needs `NS.Comms` at load).
-- **`/wc guildtest`** injects simulated members plus the local player via the
-  real send path (honoring live toggles), so the panel is testable solo.
-
-### Realm-wide comms + Server Stats odometer (`NS.RealmComms` / `NS.ServerShare`, v2.58.0, transport rebuilt v0.6.0)
-
-Rebuilt for Forever (PORT_STATUS work item 7): **addon messages** (prefix
-`"WCLRS"`) on a **temporary** custom channel (`"wowclearance"`), not chat
-text. Channel text needs a hardware event on Forever, so the 3.3.5a
-`SendChatMessage` design could never send from a timer. A channel reaches
-only your own underlying realm, so "realm-wide" means one realm copy.
-Default OFF; joined only by an opted-in player, left on opt-out.
-
-- **`NS.RealmComms` ([WoWClearance_RealmComms.lua](../WoWClearance_RealmComms.lua))** is a **sibling** of `NS.Comms`: same `RegisterHandler` / `Send(msgType, payload)` shape, no channel/target (one destination). Its own registered prefix (`"WCLRS"`, mandatory on Forever); `msgType \t payload` on the wire; received on `CHAT_MSG_ADDON` only when `channel == "CHANNEL"` and `canaccessvalue` allows. `Join()` uses `JoinTemporaryChannel` (permanent channels keep their `/N` between sessions) and waits while `/1` is empty; `Leave()` uses `LeaveChannelByName`; `Send` never joins and drops when not joined. An `OnUpdate` queue paces sends at `SEND_DELAY=0.15s`, waits out `InChatMessagingLockdown`, backs off on throttle results and drops permanent refusals. **No chunking** (the client cuts addon messages at 255 bytes without an error). `RunSelfTest()` (`/wc realmtest`) relies on the channel echoing your own message.
-- **`NS.ServerShare` ([WoWClearance_ServerShare.lua](../WoWClearance_ServerShare.lua))** is the odometer aggregator. It reuses `GuildShare.topZones` but has its **own** compact codec (fields: `t:cop,sold,del,proc | ver: | i: | z:`, 200-byte capped) because the odometer needs items-deleted + items-processed that GuildShare's payload lacks, and a tighter channel cap. **Per-sender keyed store** `NS.compCache.serverPeers[sender] = {d, t}` (session-only, latest-wins, 20min TTL) - NOT GuildShare's additive `mergeReply`, so a re-broadcast never double-counts and distinct live keys ARE the headcount. `GetAggregate()` sums/pools over live entries. **Anti-storm:** on-demand `SREQ` (self-suppressed if the channel was active in the last 90s; 60s cooldown) -> opted-in peers reply `SDAT` **on the channel** (never whisper), jittered, at most once per 30s. Everyone aggregates passively. **Spoof cap:** `saneDecoded` drops absurd totals (`COPPER_CAP`/`COUNT_CAP`); the tally is never saved. **Update checks piggyback:** the version in `SREQ`/`SDAT` feeds `NS.Comms.NotePeerVersion` (exposed for this), reusing the existing nudge unchanged.
-- **Default OFF, and no login-time join. This is a WC-TRAP, not a preference.** The v2.59.1 default-ON seed, its `shareServerDataDefaultBumped` migration marker, and the `PLAYER_LOGIN + 7s` auto-join were all **removed** during the Forever port. Do not restore any of the three. (v0.6.0 `EnsureDB` reads the old marker only to clean it up: a save that still carries `shareServerDataDefaultBumped` had sharing forced on, so the cleanup turns `shareServerData` off and deletes the marker once.) Two reasons, and the second is the one that is easy to miss:
-  1. Forever is a **live Blizzard realm**, not a private server. Joining a chat channel and broadcasting on login is a decision that belongs to the player, not to a shipped default. See PORT_STATUS work item 7, still open pending an explicit decision.
-  2. On client build 69913 the opt-out **could not persist** (saving works from build 70245), so a default-ON seed is not a default at all - it is a re-decision taken on the player's behalf at every launch. The guide used to say here that "the user can flip it off in the panel and it stays off". That was false: SavedVariables are written on exit and never read back (hard release gate in PORT_STATUS), so `shareServerData` reads nil every launch, the fresh-install branch re-fires, and the marker meant to make the bump one-shot is itself erased every time. **The migration marker could never do its job on this client.**
-
-  Seeding OFF is safe under that same breakage, which is the point: an erased opt-**in** costs a feature until the player re-enables it; an erased opt-**out** costs them a broadcast they had declined. Fail in the direction that stays quiet.
-
-  A single `shareServerData` flag still controls share + view (it shows no names, so there's no name-sharing toggle). The channel is joined **only** for an opted-in player, from the "Stats - Server" panel (its toggle, or `ServerShare.RequestNow` when the panel opens / Refresh), and left when they opt out. **Realm-wide update alerts have NO separate toggle:** the version carried in `SREQ`/`SDAT` feeds the existing `versionAlerts` nudge (via `NotePeerVersion`). Pinned by `tests/test_servershare.lua`, whose two absence-shaped checks carry a non-vacuity guard - mutation-tested, since with the source read stubbed to `""` both negatives pass vacuously and only the guard fires.
-- **Panel:** `WoWClearance_ServerStatsPanel.lua` (frame `WoWClearanceOptionsServer`, "Stats - Server"), mirrors GuildPanel; loads after GuildPanel, registered centrally in Events. Viewing requires `shareServerData` (reciprocity + bounds the sample to sharers).
-- **`/wc servertest`** injects fake sharers (incl. one the spoof cap must drop) so the panel is testable solo. Locked by `tests/test_servershare.lua`.
+"Stats - Server" (`NS.ServerShare` over the realm-channel transport
+`NS.RealmComms`, v2.58.0, rebuilt v0.6.0) was removed in v0.9.0 by the
+owner's decision, with its panel, suite and the `/wc servertest` and
+`/wc realmtest` harnesses. `EnsureDB` clears `shareServerData` and
+`shareServerDataDefaultBumped` at load. If a realm channel ever comes back,
+it must stay opt-in with no login-time join: Forever is a live Blizzard realm.
 
 ## Localization (`NS.L`)
 
@@ -1133,8 +1150,8 @@ cap the oldest entry is overwritten in place. Never `table.remove(t, 1)`
 (the v2.68.1 rule, Test 124), and readers order by sequence, not by array
 position.
 
-**Loot Log History** (`WoWClearance_LootHistory.lua`, `NS.LootHistory`,
-account-wide `ADB.lootHistory`, `MAX = 20000`):
+**Loot Log History** (`WoWClearance_Loot/WoWClearance_LootHistory.lua`,
+`NS.LootHistory`, account-wide `ADB.lootHistory`, `MAX = 20000`):
 
 - Saved shape `{ v = 2, writes = N, e = {...}, names = {...} }`. Each
   entry is ONE packed string `"time:itemID:qty:nameIndex"`; looter names
@@ -1146,9 +1163,10 @@ account-wide `ADB.lootHistory`, `MAX = 20000`):
   Readers use `LootHistory.SlotAt(k)` (newest first) and `Get(slot)`.
 - An older v1 shape is migrated on first access by re-appending its
   entries oldest first.
-- Sources: own loot via `WC_BumpLoot` calling `LootHistory.Add` with the
-  bag-delta count (so it matches the aggregate views exactly), and group
-  members via `CHAT_MSG_LOOT` on the event hub, parsed with patterns built
+- Sources: own loot via the Loot module's `bumpLoot` calling
+  `LootHistory.Add` with the bag-delta count (so it matches the aggregate
+  views exactly), and group members via `CHAT_MSG_LOOT` on the module's
+  event frame, parsed with patterns built
   from the client's `LOOT_ITEM*` format strings. Lines naming the player
   are skipped on purpose - the bag delta already counted them.
 - Chat payloads can be secret on this client: the handler checks
@@ -1222,12 +1240,12 @@ fails to compile the whole file. So:
 
 - New module-level state or helpers go on `WC_compCache` (e.g.
   `WC_compCache.settingsProfileFields`, `soldHistoryStore`,
-  `loadSoldHistory`, `claimLootLogKey`) or on `NS`.
+  `loadSoldHistory`) or on `NS`.
 - `local NS = select(2, ...)` captures only the second vararg for the
   same reason.
 - If a change genuinely needs a new file-scope local, free one first or
   move a cluster into its own file (as `WoWClearance_LootHistory.lua`
-  was) - and register that file in the `.toc` and CLAUDE.md's count.
+  was, before v0.9.0 moved it into the Loot module) - and register that file in the `.toc` and CLAUDE.md's count.
 - Other files are well under the cap but follow the same habit.
 
 The CI step `luac -p` over every `WoWClearance_*.lua` catches an
@@ -1839,8 +1857,9 @@ the vendor decision.
 ### Loot Log capture is a bag-delta, not loot events (v2.46.0)
 
 The Loot Log counts YOUR items by **net bag increase**, scanned from the
-BAG_UPDATE debounce flush (`WC_ScanLootDelta`, the last step in
-`WC_compCache.bagUpdateFrame`'s OnUpdate). Own loot is NOT driven by
+BAG_UPDATE debounce flush (`WC_compCache.scanLootDelta`, set by the Loot
+module's `WoWClearance_LootCapture.lua` and called, if present, as the last
+step in `WC_compCache.bagUpdateFrame`'s OnUpdate). Own loot is NOT driven by
 `CHAT_MSG_LOOT`: on 3.3.5a the Greedy Scavenger dropped its haul into
 bags without a "you receive loot" line, and the delta scan catches every
 source uniformly. Since v0.6.0 `CHAT_MSG_LOOT` IS registered, but only to
@@ -1859,13 +1878,14 @@ Guards that keep the delta honest (do not remove):
 - *(Removed in the port: the "skips items destined for auto-delete" rule. Auto-delete on pickup no longer exists and `DB.autoDeleteOnPickup` is cleared in `EnsureDB`, so a Delete-Listed item in your bags is counted as loot like any other.)*
 
 The three aggregate views store per-itemID counts (never an event log), in three
-places: in-memory `WC_lootSession` (Session view), per-character
+places: in-memory `NS.lootSession` (Session view), per-character
 `DB.lootedItemCounts` (Character view, in `PER_CHAR_FIELDS`), and
-account-wide `ADB.accountStats.lootedItemCounts` (Account view). `WC_BumpLoot`
-writes all three; `WC_ClearLoot(scope)` wipes one in place. `WC_BumpLoot` also appends
-each pickup to the fourth view, Loot Log History (a persisted event ring;
-see "Persisted ring logs"). The window
-(`WoWClearanceLootWindow`, built lazily in WoWClearance_StatsPanel.lua) is
+account-wide `ADB.accountStats.lootedItemCounts` (Account view). The
+module's `bumpLoot` writes all three; `NS.ClearLoot(scope)` wipes one in
+place. `bumpLoot` also appends each pickup to the fourth view, Loot Log
+History (a persisted event ring; see "Persisted ring logs"). The window
+(`WoWClearanceLootWindow`, built lazily in the module's
+`WoWClearance_LootWindow.lua`) is
 a fixed/ resizable floating frame, so it is outside the reactive-width
 contract that governs Interface Options sub-panels.
 

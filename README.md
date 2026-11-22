@@ -5,14 +5,14 @@
 [![Downloads (this release)](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Fpowerfulqa%2FWoWClearance%2Fbadge-data%2Flatest.json&style=for-the-badge&color=blue)](https://github.com/powerfulqa/WoWClearance/releases/latest)
 [![Downloads (lifetime)](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Fpowerfulqa%2FWoWClearance%2Fbadge-data%2Fdownloads.json&style=for-the-badge&color=blue)](https://github.com/powerfulqa/WoWClearance/releases)
 
-**A bag manager for WoW: Forever.** It sells what you don't want when you visit a vendor, keeps what you do, and helps you delete or process the rest.
+**Sells and deletes what you don't want, and keeps what you do.** A junk clearer for WoW: Forever: it sells at the vendor, protects the items that matter, and helps you delete or process the rest.
 
 It works with no setup. A guided Quickstart takes one click, and there are detailed controls when you want them.
 
 ## Install
 
 1. Download `WoWClearance.zip` from the [releases page](https://github.com/powerfulqa/WoWClearance/releases).
-2. Unzip it into your AddOns folder, so you end up with `World of Warcraft/_forever_/Interface/AddOns/WoWClearance`.
+2. Unzip it into your AddOns folder. You end up with two folders, `World of Warcraft/_forever_/Interface/AddOns/WoWClearance` and `WoWClearance_Loot` (the optional Loot module, below).
 3. Log in and type `/wc`.
 
 A new character starts with safe defaults: grey items sell, Common and Uncommon gear below what you are wearing sells, and the gear you wear is always kept. Press **Open Quickstart** on the main page to pick a preset or answer a few questions.
@@ -59,18 +59,25 @@ In Delete Settings you can also have Delete Next remove grey items once the list
 
 **Process Bags** lists what you can Disenchant, Pick Lock or combine (stacks of motes and similar). Bind a key to **Process Next** and press it to work through them one at a time. Only the skills your character has are shown.
 
-The same panel has **Fast Loot** and **auto-open containers**.
+The same panel can **auto-open containers** in your bags.
 
-### Shows what you looted and sold
+### Shows what it sold
+
+- **Sold History** (`/wc history`). Everything sold or deleted, newest first, with the rule that decided it.
+- **Statistics.** Gold made, items sold and deleted by rarity, repair costs and the last 7 days.
+- **Current Rules** (`/wc rules`). Every active rule in plain English.
+
+### Loot module (optional)
+
+`WoWClearance_Loot` comes in the same download as a second addon. It is on by default. Turn it off with the **Loot module** box on the main page or in the game's AddOn list, then reload. Your loot data is kept while it is off.
 
 - **Loot Log** (`/wc loot`, Shift+L). What you looted, how many and what it is worth, for this session, this character or the whole account. The History view lists every pickup, including your group's.
-- **Sold History** (`/wc history`). Everything sold or deleted, newest first, with the rule that decided it.
-- **Statistics.** Gold made and looted, items by rarity, your best zones, gold per hour and the last 7 days.
-- **Current Rules** (`/wc rules`). Every active rule in plain English.
+- **Stats - Loot.** Gold looted, gold per hour (this session and your best) and your top farming zones.
+- **Stats - Guild.** Pooled totals, best zones and most-sold items from guildmates and group members who also share. Off until you turn it on, and anonymous unless you choose to show your name.
 
 ### Highlights your bags
 
-Optional coloured borders show which items will sell or be deleted, or are on a list. Item levels can show on bags, the character sheet and the vendor window. One switch on the Item Highlighting page, or `/wc highlight`, turns all of it on or off.
+Optional coloured borders show which items will sell or be deleted, or are on a list. Item levels can show on gear in your bags. One switch on the Item Highlighting page, or `/wc highlight`, turns all of it on or off.
 
 ### Works with DaylightUI
 
@@ -89,7 +96,6 @@ Bag addons that sort items into groups get the borders too.
 - **Alt+Right-Click any bag item** to add it to a list, Allow Sell, see Sell Info or open Sold History.
 - **Profiles.** List Profiles save your Sell and Keep lists. Settings Profiles save your selling settings, so alts can share them or keep their own.
 - **Import / Export** shares lists or a settings pack as text.
-- **Stats - Guild** and **Stats - Server** pool anonymous totals from players who opt in. Both are off by default and send nothing until you turn them on.
 - **Update notice** when someone in your guild or group has a newer version.
 - **Help** with a search box, in the settings.
 
@@ -139,14 +145,14 @@ Developer documentation is under [docs/](docs/):
 - [docs/ADDON_GUIDE.md](docs/ADDON_GUIDE.md): the working rules, and the traps that have broken things before. Some API notes still describe the 3.3.5a original.
 - [docs/PORT_STATUS.md](docs/PORT_STATUS.md): what the port changed, what is measured in game, and the porting lessons.
 
-The addon is 36 `.lua` files, listed in load order in [WoWClearance.toc](WoWClearance.toc). Before opening a pull request, run:
+The addon is 30 `.lua` files, listed in load order in [WoWClearance.toc](WoWClearance.toc), plus 6 in the Loot module ([WoWClearance_Loot/](WoWClearance_Loot/)). Before opening a pull request, run:
 
 ```
-luacheck WoWClearance_*.lua
+luacheck WoWClearance_*.lua WoWClearance_Loot/*.lua
 lua5.1 tests/run_all.lua
 ```
 
-Luacheck must stay at 0 warnings and all 10 test suites must pass. CI runs the same checks.
+Luacheck must stay at 0 warnings and all 9 test suites must pass. CI runs the same checks.
 
 AI coding tools: read [AGENTS.md](AGENTS.md) first.
 
