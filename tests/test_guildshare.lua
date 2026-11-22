@@ -26,8 +26,9 @@ _G.GetTime = function() return fakeNow end
 -- game before any test body runs. See tests/wow_stub.lua.
 dofile("tests/wow_stub.lua")
 
-local chunk = assert(loadfile("WoWClearance_GuildShare.lua"))
-chunk("WoWClearance", NS)
+-- Loot module file (v0.9.0): it reads the core namespace from its own table.
+local chunk = assert(loadfile("WoWClearance_Loot/WoWClearance_GuildShare.lua"))
+chunk("WoWClearance_Loot", { core = NS })
 local gs = NS.GuildShare
 
 local fails = 0
@@ -193,7 +194,7 @@ local function readCode(p)
     end
     return table.concat(out, "\n")
 end
-local share = readCode("WoWClearance_GuildShare.lua")
+local share = readCode("WoWClearance_Loot/WoWClearance_GuildShare.lua")
 ok("exposes NS.GuildShare", share:find("NS.GuildShare", 1, true) ~= nil)
 ok("exposes InjectTestPeers diagnostic", share:find("function GuildShare.InjectTestPeers", 1, true) ~= nil)
 ok("uses NS.Comms transport", share:find("NS.Comms", 1, true) ~= nil)
@@ -209,7 +210,7 @@ ok("no 4.0 group event", not share:find("GROUP_ROSTER_UPDATE", 1, true))
 ok("RequestNow seeds self into aggregate when opted in",
     share:find("function GuildShare.RequestNow", 1, true) ~= nil
         and share:find("GuildShare.mergeReply(GuildShare.GetAggregate(), GuildShare.decodePayload(localPayload()))", 1, true) ~= nil)
-local panel = readCode("WoWClearance_GuildPanel.lua")
+local panel = readCode("WoWClearance_Loot/WoWClearance_GuildPanel.lua")
 ok("panel reads aggregate", panel:find("GetAggregate", 1, true) ~= nil)
 ok("panel opt-in writes shareGuildData", panel:find("shareGuildData", 1, true) ~= nil)
 -- v2.39.x: GuildPanel now loads before Events.lua so registration is

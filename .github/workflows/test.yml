@@ -47,7 +47,7 @@ jobs:
         # core). Mirrors the luacheck step's `WoWClearance_*.lua` glob, so a
         # new source file is syntax-checked automatically with no list to update.
         run: |
-          for f in WoWClearance_*.lua; do
+          for f in WoWClearance_*.lua WoWClearance_Loot/*.lua; do
             luac5.1 -p "$f"
           done
 
@@ -59,7 +59,7 @@ jobs:
         # the real code issues (dead locals, dup locale keys, negated
         # comparisons, dead assignments) were fixed. Must stay at 0 warnings;
         # fix the cause or extend .luacheckrc (never blanket-silence).
-        run: luacheck WoWClearance_*.lua
+        run: luacheck WoWClearance_*.lua WoWClearance_Loot/*.lua
 
       - name: Invariant test suites
         # Single entry point; tests/run_all.lua is the source of truth for

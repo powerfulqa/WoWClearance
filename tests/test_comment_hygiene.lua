@@ -32,14 +32,16 @@
 -- ServerStatsPanel were shipped but never scanned). This suite scans
 -- EVERYTHING, including the Locale file.
 local SOURCE_PATHS = {}
-do
-    local fh = assert(io.open("WoWClearance.toc", "rb"), "WoWClearance.toc not found (run from repo root)")
-    local toc = fh:read("*a")
+-- v0.9.0: the optional Loot module (WoWClearance_Loot/) ships in the same
+-- zip as a second addon; its files are scanned alongside the core's.
+for _, toc in ipairs({ { "WoWClearance.toc", "" }, { "WoWClearance_Loot/WoWClearance_Loot.toc", "WoWClearance_Loot/" } }) do
+    local fh = assert(io.open(toc[1], "rb"), toc[1] .. " not found (run from repo root)")
+    local text = fh:read("*a")
     fh:close()
-    for line in (toc .. "\n"):gmatch("(.-)\r?\n") do
+    for line in (text .. "\n"):gmatch("(.-)\r?\n") do
         local f = line:match("^(WoWClearance_[%w_]+%.lua)%s*$")
         if f then
-            SOURCE_PATHS[#SOURCE_PATHS + 1] = f
+            SOURCE_PATHS[#SOURCE_PATHS + 1] = toc[2] .. f
         end
     end
 end

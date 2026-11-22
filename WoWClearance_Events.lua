@@ -77,14 +77,12 @@ local IsEquippedItem = C_Item.IsEquippedItem -- v0.5.1: moved to C_Item on Forev
 -- resolved to nil and then "or 0", silently returning a count of zero
 -- forever. See the WC-TRAP at the external-delete check for what that cost.
 local GetItemCount = C_Item.GetItemCount
--- v0.5.7: same story, same idiom. Both verified present on this client
--- (C_Item.IsUsableItem -> usable, noMana; C_Item.GetItemFamily -> number?)
--- and verified ABSENT as bare globals - zero occurrences each across the
--- shipped UI source. These two failed CLOSED rather than open, so they
--- disabled a self-heal and a skip rather than inverting a safety check,
--- which is why they were less visible than GetItemCount.
+-- v0.5.7: same story, same idiom. Verified present on this client
+-- (C_Item.IsUsableItem -> usable, noMana) and verified ABSENT as a bare
+-- global - zero occurrences across the shipped UI source. It failed CLOSED
+-- rather than open, so it disabled a self-heal rather than inverting a
+-- safety check, which is why it was less visible than GetItemCount.
 local IsUsableItem = C_Item.IsUsableItem
-local GetItemFamily = C_Item.GetItemFamily
 local UnitName = UnitName
 local GetCursorInfo = GetCursorInfo
 local GetTime = GetTime
@@ -101,10 +99,9 @@ local WC_compCache = NS.compCache
 -- v2.59.5 (Serv report): city zones don't count as farming areas. A player
 -- vendoring mailboxed items in Dalaran / Stormwind / Orgrimmar is not
 -- farming there, so their sale copper should not pollute the "Top Zones"
--- leaderboard the Stats / Stats-Guild / Stats-Server panels render.
--- Consumed by WC_compCache.attributeCopperToZone (sender-side skip),
--- the receiver-side decode filters in GuildShare / ServerShare (drop
--- city entries from peer payloads), and the EnsureDB / EnsureAccountDB
+-- leaderboard the Stats panel renders.
+-- Consumed by WC_compCache.attributeCopperToZone and the
+-- EnsureDB / EnsureAccountDB
 -- scrubs that strip historical city keys from DB.copperByZone and
 -- ADB.accountStats.copperByZone. Wallet totalCopper is bumped
 -- separately and stays accurate.
@@ -308,7 +305,7 @@ local PER_CHAR_FIELDS = {
     -- Per-character loot ledger (itemID -> total quantity looted by this
     -- character, persisted). The Loot Log's Character scope reads this; the
     -- account-wide aggregate lives in ADB.accountStats.lootedItemCounts and
-    -- the live session view in the in-memory WC_lootSession.
+    -- the live session view in the Loot module's in-memory NS.lootSession.
     lootedItemCounts = true,
     -- v0.6.0: the Sold History logs (sold + deleted), saved per character
     -- so each character's history survives logout. Shape and loader live
@@ -383,31 +380,18 @@ WC_compCache.settingsProfileFields = {
 -- Since 2026-11-20 the client returns an empty realm name (a Blizzard change
 -- that may be permanent). "First Surname-" would open a new partition seeded
 -- from the frozen account-wide snapshot: old Keep / Sell Lists, so items on
--- the real Keep List could be sold. With no realm, reuse this character's
--- one saved "First Surname-Realm" partition. With none (a new character) or
--- several (the same name on two realms, no guessing), "First Surname-".
+-- the real Keep List could be sold. NS.RealmName (Core) falls back to the
+-- realm of this character's one saved partition; with none or several it
+-- gives nil and the key is "First Surname-".
 local function WC_DBCharKey()
-    local name = GetUnitName("player", true) or "Unknown"
-    local realm = GetRealmName() or "Unknown"
-    if realm ~= "" then
-        return name .. "-" .. realm
-    end
-    local prefix, hit = name .. "-", nil
-    local chars = type(WoWClearanceDB) == "table" and WoWClearanceDB.chars
-    for key in pairs(type(chars) == "table" and chars or {}) do
-        if type(key) == "string" and #key > #prefix and key:sub(1, #prefix) == prefix then
-            if hit then
-                return prefix
-            end
-            hit = key
-        end
-    end
-    return hit or prefix
+    return (GetUnitName("player", true) or "Unknown") .. "-" .. (NS.RealmName() or "")
 end
 
 -- The pre-surname key, "First-Realm", for the one-time copy-forward below.
+-- nil with no realm: "First-" would only ever miss.
 local function WC_DBLegacyCharKey()
-    return (UnitName("player") or "Unknown") .. "-" .. (GetRealmName() or "Unknown")
+    local realm = NS.RealmName()
+    return realm and ((UnitName("player") or "Unknown") .. "-" .. realm)
 end
 
 local function WC_DBDeepCopy(t)
@@ -525,7 +509,7 @@ local function EnsureAccountDB()
         ADB.lootLogHidden = {}
     end
     -- Loot Log "History" view: one entry per pickup, ring-capped. Shape and
-    -- writer live in WoWClearance_LootHistory.lua.
+    -- writer live in WoWClearance_Loot/WoWClearance_LootHistory.lua (Loot module).
     if type(ADB.lootHistory) ~= "table" then
         ADB.lootHistory = { v = 2, writes = 0, e = {}, names = {} }
     end
@@ -642,7 +626,8 @@ local function EnsureDB()
     if WoWClearanceDB.versionAlerts == nil then
         WoWClearanceDB.versionAlerts = true
     end
-    -- Guild farming/stats sharing (opt-in, default OFF). Account-level.
+    -- Guild farming/stats sharing (Stats - Guild, in the Loot module since
+    -- v0.9.0). Opt-in, default OFF. Account-level.
     if WoWClearanceDB.shareGuildData == nil then
         WoWClearanceDB.shareGuildData = false
     end
@@ -650,48 +635,10 @@ local function EnsureDB()
     if WoWClearanceDB.shareGuildName == nil then
         WoWClearanceDB.shareGuildName = false
     end
-    -- shareServerData feeds the anonymous "Stats - Server" odometer AND is what
-    -- lets you see it (it shows no names, so there is no name-sharing toggle).
-    -- Turning it on is also what joins the realm chat channel; a channel slot
-    -- is never used otherwise.
-    --
-    -- WC-TRAP: this MUST stay default OFF. The v2.59.1 default-ON seed and its
-    -- shareServerDataDefaultBumped migration marker are deliberately GONE. Do
-    -- not restore either as a "reasonable default"; both are listed here so a
-    -- reader knows their absence is a decision rather than an oversight.
-    --
-    -- Two reasons, and the second is the one that is easy to miss.
-    --
-    -- 1. Forever is a live Blizzard realm, not a private server. Joining a
-    --    chat channel and broadcasting on login is a decision that belongs to
-    --    the player, not to a shipped default. See PORT_STATUS work item 7.
-    -- 2. On client build 69913 the opt-out COULD NOT persist, so a
-    --    default-ON seed was not merely a default, it was a re-decision taken
-    --    on the player's behalf every launch: SavedVariables were written on
-    --    exit and never read back (hard release gate in PORT_STATUS), so
-    --    shareServerData read nil at every launch and the fresh-install
-    --    branch fired again. Saving works from build 70245, but if a later
-    --    build regresses, this reason comes back with it.
-    --
-    -- Seeding OFF is safe under that same breakage, which is the whole point:
-    -- an erased opt-IN costs a feature until the player re-enables it, where
-    -- an erased opt-OUT costs them a broadcast they had declined. Fail in the
-    -- direction that stays quiet.
-    if WoWClearanceDB.shareServerData == nil then
-        WoWClearanceDB.shareServerData = false
-    end
-    -- v0.6.0 one-shot cleanup. Saves written by the pre-port default-ON code
-    -- carry shareServerDataDefaultBumped = true next to a shareServerData =
-    -- true the player never chose. Now that saved data persists (build
-    -- 70245), that forced value would stick, and opening the Stats - Server
-    -- panel would join the realm channel on it. The marker only ever came
-    -- from that forced path, so its presence means "not the player's
-    -- choice": turn sharing off and drop the marker. Runs once, because the
-    -- marker is gone afterwards; a later opt-in from the panel is kept.
-    if WoWClearanceDB.shareServerDataDefaultBumped ~= nil then
-        WoWClearanceDB.shareServerData = false
-        WoWClearanceDB.shareServerDataDefaultBumped = nil
-    end
+    -- v0.9.0: Stats - Server and its realm channel were removed. Clear their
+    -- saved switches so an old save carries nothing that reads as consent.
+    WoWClearanceDB.shareServerData = nil
+    WoWClearanceDB.shareServerDataDefaultBumped = nil
     -- The French / German translations and /wc locale were dropped: this
     -- version is English only. Clear the old override.
     WoWClearanceDB.localeOverride = nil
@@ -704,8 +651,9 @@ local function EnsureDB()
         WoWClearanceDB.chars = {}
     end
     local charKey = WC_DBCharKey()
-    -- Guard: at a very early ADDON_LOADED, UnitName("player") /
-    -- GetRealmName() can still be nil, making the key "Unknown-...". Never
+    -- Guard: at a very early ADDON_LOADED, GetUnitName("player", true) can
+    -- still be nil, making the key "Unknown-...". (An empty realm name is
+    -- handled by NS.RealmName, see WC_DBCharKey.) Never
     -- persist a partition under that key (it would be an orphan namespace
     -- in SavedVariables, one per fresh account); bind a transient in-memory
     -- namespace instead. The PLAYER_LOGIN EnsureDB re-run resolves the real
@@ -716,6 +664,7 @@ local function EnsureDB()
         WC_compCache.unknownCharNS = WC_compCache.unknownCharNS or {}
     elseif
         not WoWClearanceDB.chars[charKey]
+        and WC_DBLegacyCharKey()
         and WoWClearanceDB.chars[WC_DBLegacyCharKey()]
         and not (WoWClearanceDB.surnameCopied and WoWClearanceDB.surnameCopied[WC_DBLegacyCharKey()])
     then
@@ -1171,23 +1120,8 @@ local function EnsureDB()
     if type(DB.processCollapsedModes) ~= "table" then
         DB.processCollapsedModes = {}
     end
-    -- v2.16.0: Fast Loot. When on AND Blizzard's auto-loot CVar is
-    -- effectively enabled, WC_HandleLootReady queues every slot in the
-    -- loot window for draining, so the loot frame flashes briefly or
-    -- skips entirely. Pairs with the auto-loot cycle: faster per-kill
-    -- looting = bag-full threshold trips sooner = vendor cycle turns
-    -- over faster. Default off so existing users keep the standard
-    -- loot-window behaviour and BoP-bind safety prompts. Pattern
-    -- borrowed from FasterLoot (others/FasterLoot/FasterLoot.lua).
-    --
-    -- v2.21.0 retrofit: drain is now queue-based with a ~110 ms
-    -- throttle per slot (was: tight loop over GetNumLootItems in one
-    -- frame), reducing disconnect risk on busy private servers. The
-    -- toggle, schema, and BoP-bind auto-confirm are unchanged from
-    -- v2.16.0; only the internal draining is refactored.
-    if type(DB.fastLoot) ~= "boolean" then
-        DB.fastLoot = false
-    end
+    -- v0.9.0: Fast Loot was removed.
+    DB.fastLoot = nil
     if type(DB.enabled) ~= "boolean" then
         DB.enabled = true
     end
@@ -1537,19 +1471,10 @@ local function EnsureDB()
     if type(DB.itemLevelOverlay.enabled) ~= "boolean" then
         DB.itemLevelOverlay.enabled = false
     end
-    if type(DB.itemLevelOverlay.bags) ~= "boolean" then
-        DB.itemLevelOverlay.bags = true
-    end
-    if type(DB.itemLevelOverlay.paperdoll) ~= "boolean" then
-        DB.itemLevelOverlay.paperdoll = false
-    end
-    if type(DB.itemLevelOverlay.merchant) ~= "boolean" then
-        DB.itemLevelOverlay.merchant = false
-    end
-    -- Font size for the iLvl text. Clamped to a sensible range so a
-    -- corrupt SV can't render the number invisible (sub-6) or
-    -- catastrophically large (>20). 12 matches the default
-    -- NumberFontNormalSmall size.
+    -- v0.9.0: only the bag surface is left, so the per-surface switches go.
+    DB.itemLevelOverlay.bags = nil
+    DB.itemLevelOverlay.paperdoll = nil
+    DB.itemLevelOverlay.merchant = nil
     if type(DB.itemLevelOverlay.fontSize) ~= "number"
         or DB.itemLevelOverlay.fontSize < 6
         or DB.itemLevelOverlay.fontSize > 20
@@ -1624,20 +1549,9 @@ local WC_session = {
     deleted = 0,
     repairs = 0,
     repairCopper = 0,
-    lootCopper = 0,
     startedAt = GetTime(),
 }
 NS.session = WC_session
-
--- Session loot ledger. Keyed by itemID -> total quantity looted this
--- session. In-memory only (clears on /reload and Reset Session). This is
--- an AGGREGATE, not an event log: storage is one small integer per
--- distinct item, so it stays bounded no matter how long the farm runs.
--- The persisted account-wide running total lives in
--- ADB.accountStats.lootedItemCounts (see WC_BumpLoot). Exposed on NS so
--- the Stats panel's loot window can read it.
-local WC_lootSession = {}
-NS.lootSession = WC_lootSession
 
 local function WC_ResetSession()
     WC_session.copper = 0
@@ -1645,44 +1559,13 @@ local function WC_ResetSession()
     WC_session.deleted = 0
     WC_session.repairs = 0
     WC_session.repairCopper = 0
-    WC_session.lootCopper = 0
     WC_session.startedAt = GetTime()
-    -- Wipe the session loot ledger in place (keep the same table object so
-    -- NS.lootSession references held by the loot window stay valid).
-    for k in pairs(WC_lootSession) do
-        WC_lootSession[k] = nil
+    -- The optional Loot module clears its own session side.
+    if WC_compCache.onResetSession then
+        WC_compCache.onResetSession()
     end
 end
 NS.ResetSession = WC_ResetSession
-
--- Clear one scope of the loot ledger. "session" wipes the in-memory
--- session table; "account" wipes the persisted account-wide bucket. Both
--- wipe in place so existing table references stay valid.
-local function WC_ClearLoot(scope)
-    if scope == "account" then
-        local AS = ADB and ADB.accountStats
-        if AS and AS.lootedItemCounts then
-            for k in pairs(AS.lootedItemCounts) do
-                AS.lootedItemCounts[k] = nil
-            end
-        end
-    elseif scope == "history" then
-        if NS.LootHistory then
-            NS.LootHistory.Clear()
-        end
-    elseif scope == "character" then
-        if DB and DB.lootedItemCounts then
-            for k in pairs(DB.lootedItemCounts) do
-                DB.lootedItemCounts[k] = nil
-            end
-        end
-    else
-        for k in pairs(WC_lootSession) do
-            WC_lootSession[k] = nil
-        end
-    end
-end
-NS.ClearLoot = WC_ClearLoot
 
 -- v2.38.1: every per-character stat write mirrors into ADB.accountStats
 -- so the Stats panel's Account view aggregates totals across all
@@ -1699,13 +1582,13 @@ NS.ClearLoot = WC_ClearLoot
 -- v0.7.0: per-day totals (account-wide), so the Stats panel can show
 -- recent days. Keyed by local date; short field names keep the saved
 -- rows small: c = sold copper, s = items sold, d = items deleted,
--- r = repair copper, g = looted coin, l = items looted.
+-- r = repair copper. (Older rows may also carry g / l, looted coin and
+-- items, written before v0.9.0 moved loot tracking to the Loot module.)
 WC_compCache.dayFields = {
     totalCopper = "c",
     totalItemsSold = "s",
     totalItemsDeleted = "d",
     totalRepairCopper = "r",
-    totalLootCopper = "g",
 }
 function WC_compCache.bumpDay(key, delta)
     local AS = ADB and ADB.accountStats
@@ -1733,6 +1616,8 @@ local function WC_BumpStat(field, delta)
     WC_compCache.bumpDay(WC_compCache.dayFields[field], delta)
 end
 
+WC_compCache.bumpStat = WC_BumpStat
+
 local function WC_BumpStatBucket(bucket, key, delta)
     delta = delta or 1
     if DB then
@@ -1744,143 +1629,8 @@ local function WC_BumpStatBucket(bucket, key, delta)
         ADB.accountStats[bucket][key] = (ADB.accountStats[bucket][key] or 0) + delta
     end
 end
-
--- Session loot tracker bump. Writes the in-memory session ledger and the
--- persisted account-wide running total. Deliberately NOT routed through
--- WC_BumpStat / WC_BumpStatBucket: those also mirror into a per-character
--- DB bucket, but loot tracking is session + account only (no per-character
--- lifetime view by design). Aggregate per itemID, so it never grows into
--- an event log.
-local function WC_BumpLoot(itemID, qty)
-    if not itemID then
-        return
-    end
-    qty = qty or 1
-    if qty <= 0 then
-        return
-    end
-    WC_lootSession[itemID] = (WC_lootSession[itemID] or 0) + qty
-    if DB then
-        DB.lootedItemCounts = DB.lootedItemCounts or {}
-        DB.lootedItemCounts[itemID] = (DB.lootedItemCounts[itemID] or 0) + qty
-    end
-    if ADB and ADB.accountStats then
-        ADB.accountStats.lootedItemCounts = ADB.accountStats.lootedItemCounts or {}
-        ADB.accountStats.lootedItemCounts[itemID] = (ADB.accountStats.lootedItemCounts[itemID] or 0) + qty
-    end
-    -- Per-pickup history (who/when). Own loot only; group members' loot
-    -- arrives from chat in WoWClearance_LootHistory.lua.
-    if NS.LootHistory then
-        NS.LootHistory.Add(itemID, qty)
-    end
-    WC_compCache.bumpDay("l", qty)
-    -- v2.50.1: mark the Loot Log window for refresh. Its OnUpdate rebuilds
-    -- on this flag (throttled) instead of unconditionally every second, so
-    -- an open window costs nothing while no new loot is arriving.
-    WC_compCache.lootWindowDirty = true
-end
-
--- Loot capture. We track NET BAG INCREASES rather than parsing
--- CHAT_MSG_LOOT, because a pet or AOE loot source can drop its haul straight
--- into your bags without firing a "you receive loot" chat line - so chat
--- parsing only ever saw what the PLAYER looted by hand. A bag-delta scan
--- catches every source uniformly: manual loot, the auto-loot cycle, AND
--- into bags with no loot message. Summing per itemID across all bags means moving or
--- splitting stacks nets to zero (no false count); only genuine increases
--- are recorded.
---
--- Runs from the BAG_UPDATE debounce flush (already coalesced for the
--- rapid multi-item bursts), so it costs one bag walk per
--- settled burst - no tooltip scans. To avoid counting non-loot inflows
--- (vendor buys / buybacks, bank or mail withdrawals, trade, auction,
--- crafting output), the scan only DIFFS when no transactional window is
--- open; while one is open it just re-baselines the snapshot so the next
--- open-world loot diffs against the right starting point.
-local WC_lootBagSnapshot = {}
-local WC_lootSnapshotReady = false
-
--- Frame NAMES (not refs) for the windows through which items legitimately
--- enter bags without being "loot". Looked up via _G at call time because
--- several are load-on-demand (GuildBankFrame, TradeFrame, AuctionFrame,
--- TradeSkillFrame, CraftFrame are nil until first opened) - and a table of
--- frame refs with nil holes would make ipairs stop at the first nil,
--- silently skipping every frame after it (the v2.46.0 bug where mailbox
--- takes were counted because GuildBankFrame was nil and short-circuited
--- the scan of MailFrame). QuestFrame / GossipFrame cover quest-reward and
--- gossip-vendor item grants.
-local WC_LOOT_TXN_FRAMES = {
-    "MerchantFrame",
-    "BankFrame",
-    "GuildBankFrame",
-    "MailFrame",
-    "OpenMailFrame",
-    "TradeFrame",
-    -- Forever names (AuctionFrame / TradeSkillFrame / CraftFrame do not
-    -- exist here, so crafts and auction pickups counted as loot).
-    "AuctionHouseFrame",
-    "ProfessionsFrame",
-    "QuestFrame",
-    "GossipFrame",
-}
-
--- True while a window is open through which items legitimately enter bags
--- without being "loot" (so we shouldn't count the delta as looted).
-local function WC_LootTransactionWindowOpen()
-    for i = 1, #WC_LOOT_TXN_FRAMES do
-        local f = _G[WC_LOOT_TXN_FRAMES[i]]
-        if f and f.IsShown and f:IsShown() then
-            return true
-        end
-    end
-    return false
-end
-
--- v0.7.0: coin picked up from loot windows. Money gained between a loot
--- window opening (LOOT_READY) and 2 s after it closes is loot coin: the
--- money update can land just after LOOT_CLOSED under auto-loot. Reading
--- the money total instead of the loot slots or the chat line keeps this
--- free of localized text. Gains while a transaction window is open
--- (merchant, mail, quest, ...) never count. Coin from loot that skips the
--- loot window entirely is not seen.
-function WC_compCache.lootMoneyEvent(event)
-    local now = GetTime()
-    if event == "LOOT_READY" then
-        WC_compCache.lootMoneyBase = GetMoney()
-        WC_compCache.lootMoneyUntil = math.huge
-    elseif event == "LOOT_CLOSED" then
-        if WC_compCache.lootMoneyUntil then
-            WC_compCache.lootMoneyUntil = now + 2
-        end
-    elseif event == "PLAYER_MONEY" then
-        local base, money = WC_compCache.lootMoneyBase, GetMoney()
-        WC_compCache.lootMoneyBase = money
-        if base and money > base and now <= (WC_compCache.lootMoneyUntil or 0) and not WC_LootTransactionWindowOpen() then
-            local gain = money - base
-            WC_session.lootCopper = WC_session.lootCopper + gain
-            WC_BumpStat("totalLootCopper", gain)
-            if NS.StampBestGPH then
-                NS.StampBestGPH()
-            end
-        end
-    end
-end
-
--- Build a fresh { itemID = totalCount } snapshot across the backpack, bags 1-4 and the reagent bag.
-local function WC_BuildBagSnapshot()
-    local snap = {}
-    for bag = 0, NUM_TOTAL_EQUIPPED_BAG_SLOTS do
-        local slots = GetContainerNumSlots(bag) or 0
-        for slot = 1, slots do
-            local id = GetContainerItemID(bag, slot)
-            if id then
-                local cInfo = C_Container.GetContainerItemInfo(bag, slot)
-                local count = cInfo and cInfo.stackCount
-                snap[id] = (snap[id] or 0) + (count or 1)
-            end
-        end
-    end
-    return snap
-end
+-- Shared with the optional Loot module (looted coin, zone totals).
+WC_compCache.bumpStatBucket = WC_BumpStatBucket
 
 -- v2.59.0: shared per-flush bag snapshot. The settled BAG_UPDATE flush used
 -- to fan out into 5-9 independent full bag walks (auto-open, upgrade scan,
@@ -1952,109 +1702,6 @@ function WC_compCache.acquireFlushSnapshot()
     snap = WC_compCache.buildBagFlushSnapshot()
     WC_compCache.flushSnapshot = snap
     return snap
-end
-
--- v2.49.0: equipped snapshot for the unequip guard on WC_ScanLootDelta.
--- Reported by Serv: unequipping a worn item counts it as loot because
--- the item moves from an equipment slot to a bag slot, showing as a
--- new bag delta. Comparing this snapshot across scan runs lets us
--- detect "was equipped last scan, isn't now" and subtract that itemID
--- from the positive bag delta before crediting as loot. Standard
--- inventory slots 1-19 (INVSLOT_HEAD through INVSLOT_TABARD).
-local WC_lootEquippedSnapshot = {}
--- v2.68.1: double-buffer. The scan fills the spare, diffs it against the
--- baseline, then the two tables SWAP - so this always-on BAG_UPDATE-path
--- consumer stops allocating a fresh 19-slot table (plus the `unequipped`
--- scratch below) every settled burst. Same wipe-and-reuse pattern as
--- WC_manualSell.snapshotBags. On WC_compCache, not file-scope locals:
--- the main chunk sits at Lua 5.1's 200-locals cap.
-WC_compCache.lootEquippedSpare = {}
-WC_compCache.lootUnequippedScratch = {}
-local function WC_BuildEquippedSnapshot(into)
-    wipe(into)
-    if not GetInventoryItemID then
-        return into
-    end
-    for slot = 1, 19 do
-        local id = GetInventoryItemID("player", slot)
-        if id then
-            into[id] = (into[id] or 0) + 1
-        end
-    end
-    return into
-end
-
--- Diff current bags against the last snapshot and record positive deltas as
--- looted. Called from the BAG_UPDATE debounce flush. The first call after
--- login / reload only baselines (existing bag contents are not "loot").
-local function WC_ScanLootDelta()
-    -- Master enable gate, consistent with the other debounce-driven scans.
-    if NS.IsAddonEnabledForChar and not NS.IsAddonEnabledForChar() then
-        return
-    end
-    -- Skip entirely while an item is on the cursor: a bag reorganise picks
-    -- an item up (total count drops) then drops it back (count returns).
-    -- Leaving the snapshot untouched until the cursor clears means the
-    -- round-trip nets to zero instead of crediting a phantom +1. Any real
-    -- loot that lands while the cursor is busy is caught on the next scan.
-    if CursorHasItem and CursorHasItem() then
-        return
-    end
-    -- v2.59.0: reuse the shared flush snapshot's {itemID = count} map when
-    -- inside a flush (saves a second full bag walk); standalone calls keep
-    -- building their own. The shared map is never mutated after build, so
-    -- retaining it as the next baseline (bottom of this function) is safe.
-    local sharedSnap = WC_compCache.currentFlushSnapshot()
-    local snap = sharedSnap and sharedSnap.counts or WC_BuildBagSnapshot()
-    -- While a transactional window is open, or on the very first scan, just
-    -- re-baseline without crediting any delta as loot.
-    if not WC_lootSnapshotReady or WC_LootTransactionWindowOpen() then
-        WC_lootBagSnapshot = snap
-        WC_BuildEquippedSnapshot(WC_lootEquippedSnapshot)
-        WC_lootSnapshotReady = true
-        return
-    end
-    -- v2.49.0: unequip guard. Reported by Serv - unequipping a worn
-    -- item moves it from an equipment slot to a bag slot, showing as
-    -- a positive bag delta and getting credited as loot. Diff the
-    -- equipped snapshot vs the previous run and build a per-itemID
-    -- "just unequipped" count. Subtract from the bag delta before
-    -- crediting. Equipping (bag -> slot) doesn't trigger a positive
-    -- bag delta so no equivalent guard needed on that side.
-    local equippedNow = WC_BuildEquippedSnapshot(WC_compCache.lootEquippedSpare)
-    local unequipped = WC_compCache.lootUnequippedScratch
-    wipe(unequipped)
-    for id, prevEq in pairs(WC_lootEquippedSnapshot) do
-        local nowEq = equippedNow[id] or 0
-        if nowEq < prevEq then
-            unequipped[id] = prevEq - nowEq
-        end
-    end
-    -- Delete List items count as loot: nothing deletes them on arrival any
-    -- more (v0.6.0, the game refuses automatic deletes), so they stay in
-    -- bags until the player presses Delete Next, like any other loot.
-    for id, count in pairs(snap) do
-        local prev = WC_lootBagSnapshot[id] or 0
-        if count > prev then
-            local delta = count - prev
-            -- v2.49.0: subtract items just unequipped so a worn->bag
-            -- transition doesn't count as loot.
-            local unequipDelta = unequipped[id] or 0
-            local netDelta = delta - unequipDelta
-            -- NS.IsInSet rather than the file-local IsInSet because that
-            -- local is declared further down in the chunk (after this
-            -- function's definition point) and isn't a captured upvalue
-            -- here. Same membership semantics; one extra table lookup.
-            if netDelta > 0 then
-                WC_BumpLoot(id, netDelta)
-            end
-        end
-    end
-    WC_lootBagSnapshot = snap
-    -- Rotate the double-buffer: the just-built table becomes the baseline,
-    -- the old baseline becomes next scan's spare (wiped on fill).
-    WC_compCache.lootEquippedSpare = WC_lootEquippedSnapshot
-    WC_lootEquippedSnapshot = equippedNow
 end
 
 -- Keep bags open when merchant closes
@@ -2703,23 +2350,6 @@ end
 -- the write to leak into _G if the function is parsed before the local exists.
 local WC_autoOpenInFlight = false
 
--- v2.21.0: Fast Loot queue state hung off WC_compCache to stay under
--- Lua 5.1's 200-locals-per-main-chunk cap (CLAUDE.md discipline). The
--- queue replaces v2.16.0's tight-loop drain with a slot-index queue
--- that drains via OnUpdate throttle, reducing per-frame LootSlot
--- pressure to mitigate disconnect risk on busy 3.3.5a private
--- servers. WC_compCache.lootQueue is initialised here so the OnUpdate
--- driver (built lazily in WC_HandleLootReady) can reach it via
--- WC_compCache. Resets naturally on /reload and on every LOOT_READY
--- (re-population wipes + refills).
-WC_compCache.lootQueue = {
-    slots = {},
-    isProcessing = false,
-    lastLootAt = 0,
-    delay = 0.11, -- 110 ms; matches the reference implementation's default
-    frame = nil, -- built lazily in WC_HandleLootReady on first call
-}
-
 -- ===========================================================================
 -- Auto-open lootable containers
 -- ---------------------------------------------------------------------------
@@ -3033,8 +2663,8 @@ WC_compCache.bagUpdateFrame:SetScript("OnUpdate", function(self, elapsed)
         WC_compCache.runAutoMarkKnownUnsellableRecipes()
     end
     -- Loot tracker bag-delta scan. Runs last in the flush.
-    if WC_ScanLootDelta then
-        WC_ScanLootDelta()
+    if WC_compCache.scanLootDelta then
+        WC_compCache.scanLootDelta()
     end
     -- Drop the shared snapshot reference; the frame stamp already stops
     -- cross-frame reuse, this just lets the tables GC promptly.
@@ -3299,47 +2929,6 @@ end
 -- WC_compCache, so call sites elsewhere in this file already resolve
 -- through the shared upvalue and need no changes.
 
--- v2.21.0: pre-flight bag-space check used by the Fast Loot queue
--- before each LootSlot call. Returns true if the item can fit (free
--- slot in a compatible bag, OR room in an existing stack). False
--- means bags are too full - the queue defers, and the loot window
--- stays open for the player to deal with manually. Money and items
--- with no link (currency drops) always return true since they don't
--- consume bag space.
-function WC_compCache.canLootItem(link)
-    if not link then
-        return true
-    end
-    local itemFamily = GetItemFamily(link) or 0
-    local totalFree = 0
-    for i = 0, NUM_TOTAL_EQUIPPED_BAG_SLOTS do
-        local free, bagFamily = GetContainerNumFreeSlots(i)
-        bagFamily = bagFamily or 0
-        -- bagFamily 0 = generic bag, accepts anything. Non-zero =
-        -- specialty bag (quiver, soul shard pouch, etc.) - only
-        -- accepts items whose family bit matches.
-        if free and (bagFamily == 0 or (itemFamily and bit.band(itemFamily, bagFamily) > 0)) then
-            totalFree = totalFree + free
-        end
-    end
-    if totalFree > 0 then
-        return true
-    end
-    -- Bags full but check if the item can stack into an existing
-    -- partial stack of the same item.
-    local have = GetItemCount(link) or 0
-    if have > 0 then
-        local _, _, _, _, _, _, _, stackSize = GetItemInfo(link)
-        if stackSize and stackSize > 1 then
-            local remainder = have % stackSize
-            if remainder > 0 then
-                return true
-            end
-        end
-    end
-    return false
-end
-
 -- The Process Bags engine (Disenchant / Mill / Prospect / Lockpick
 -- eligibility predicates + spell IDs + buildProcessSummary bag walk)
 -- lives in WoWClearance_Process.lua after Stage 7 of the file split.
@@ -3348,91 +2937,6 @@ end
 -- UI) stays in this file for Stage 8 because it pulls in a dense web
 -- of UI-building helpers. See docs/CODE_REVIEW.md item 4.
 
-
--- v2.21.0: Fast Loot driver. Replaces v2.16.0's tight-loop drain
--- (which fired N LootSlot calls in one frame and risked anti-flood
--- disconnect on busy 3.3.5a private servers) with a queue + OnUpdate
--- throttle: on LOOT_READY, the slot indices are pushed into
--- WC_lootQueue.slots and the OnUpdate driver below drains one slot
--- every WC_LOOT_QUEUE_DELAY seconds. Each pop re-validates the slot
--- and pre-checks bag space before calling LootSlot. The 0.3 s
--- LOOT_READY debounce from v2.16.0 is gone - re-populating the queue
--- on a fresh LOOT_READY is idempotent (wipe + refill).
---
--- The "auto-loot is effectively on right now?" check is unchanged
--- from v2.16.0: autoLootDefault is the CVar setting, AUTOLOOTTOGGLE
--- is the modifier key (typically Shift) that inverts auto-loot for
--- one interaction. When the CVar's value matches whether the
--- modifier is held, auto-loot is OFF for this loot (user is
--- explicitly opting OUT - or didn't opt IN); when they differ,
--- auto-loot is ON. Skip when off so the user keeps the standard
--- loot window for selective looting.
---
--- BoP-bind auto-confirm (also v2.16.0) is unchanged: the
--- hooksecurefunc on LootSlot fires whether the call comes from the
--- old tight loop or the new queue. Fast Loot users still don't see
--- the bind popup.
-local function WC_HandleLootReady()
-    if not DB or not DB.fastLoot then
-        return
-    end
-    if GetCVarBool("autoLootDefault") == IsModifiedClick("AUTOLOOTTOGGLE") then
-        return
-    end
-    local n = GetNumLootItems()
-    if n == 0 then
-        return
-    end
-    local q = WC_compCache.lootQueue
-    -- Lazy-build the OnUpdate driver frame on first LOOT_READY. Lives
-    -- for the rest of the session; cheap when DB.fastLoot is off
-    -- because the OnUpdate body bails on isProcessing == false.
-    if not q.frame then
-        q.frame = CreateFrame("Frame")
-        q.frame:SetScript("OnUpdate", function(self)
-            local qs = WC_compCache.lootQueue
-            if not qs.isProcessing then
-                return
-            end
-            if (GetTime() - qs.lastLootAt) < qs.delay then
-                return
-            end
-            if #qs.slots == 0 then
-                qs.isProcessing = false
-                return
-            end
-            local slotIdx = qs.slots[1]
-            table.remove(qs.slots, 1)
-            -- Per-slot revalidation: server-side loot state can
-            -- desync from the snapshot at LOOT_READY (a slot can
-            -- become invalid before we reach it).
-            -- Mainline order: texture, name, quantity, currencyID, quality,
-            -- locked (LootFrame.lua:228). The 3.3.5a 5th return is now quality.
-            local _, _, _, _, _, locked = GetLootSlotInfo(slotIdx)
-            if locked then
-                -- BoP / roll item: leave for player. The existing
-                -- BoP-bind auto-confirm hook only fires AFTER a
-                -- successful LootSlot, so skipping here leaves the
-                -- loot window open for manual handling.
-                return
-            end
-            -- Bag-space pre-check: avoids ERR_INV_FULL spam in the
-            -- chat frame when bags are full.
-            local link = GetLootSlotLink(slotIdx)
-            if link and not WC_compCache.canLootItem(link) then
-                return
-            end
-            qs.lastLootAt = GetTime()
-            LootSlot(slotIdx)
-        end)
-    end
-    wipe(q.slots)
-    for i = n, 1, -1 do
-        q.slots[#q.slots + 1] = i
-    end
-    q.isProcessing = true
-    q.lastLootAt = 0
-end
 
 -- ===========================================================================
 
@@ -4387,27 +3891,6 @@ end
 -- a synchronous read inside the hook can't see what was sold. All three
 -- helpers hang off WC_manualSell to keep main-chunk local count down (Lua
 -- 5.1 caps that at 200).
--- v2.37.0: add a sell's copper to the current zone's lifetime total
--- (or "Unknown" when the zone text isn't ready, e.g. mid-load). Shared by
--- the manual UseContainerItem hook and the worker-cycle FinishRun so the
--- Stats panel's "Top Zones" rollup matches the wallet totals.
-function WC_compCache.attributeCopperToZone(copper)
-    local zone = GetRealZoneText and GetRealZoneText() or nil
-    if not zone or zone == "" then
-        zone = "Unknown"
-    end
-    -- v2.59.5 (Serv report): drop city sales. Vendoring mailboxed items
-    -- in Dalaran / Stormwind / etc. is not farming and would otherwise
-    -- pollute the Top Zones leaderboard. Wallet totalCopper is bumped
-    -- separately by the caller, so wallet views stay accurate.
-    if WC_CITY_ZONES[zone] then
-        return
-    end
-    -- v2.38.1: helper writes to DB AND ADB.accountStats for the
-    -- account-view aggregate.
-    WC_BumpStatBucket("copperByZone", zone, copper)
-end
-
 function WC_manualSell.snapshotBags()
     wipe(WC_manualSell.snapshot)
     for bag = 0, NUM_TOTAL_EQUIPPED_BAG_SLOTS do
@@ -4493,8 +3976,10 @@ function WC_manualSell.installHookOnce()
                         WC_BumpStatBucket("soldItemsByQuality", quality, 1)
                         WC_BumpStatBucket("soldCopperByQuality", quality, copper)
                     end
-                    -- v2.37.0: attribute the sell to the current zone.
-                    WC_compCache.attributeCopperToZone(copper)
+                    -- Zone total + gold-per-hour record (Loot module).
+                    if WC_compCache.onSoldCopper then
+                        WC_compCache.onSoldCopper(copper)
+                    end
                 end
                 WC_session.copper = WC_session.copper + copper
                 WC_session.sold = WC_session.sold + 1
@@ -5323,10 +4808,8 @@ local WC_TOGGLE_WATCH_LIST = {
     "sellKnownRecipes",
     -- vendor mode
     "repairGear", "repairUseGuildBank",
-    -- sharing (v2.53.0)
+    -- guild sharing (v2.53.0; Loot module since v0.9.0)
     "shareGuildData", "shareGuildName",
-    -- realm-wide sharing (v2.58.0)
-    "shareServerData",
 }
 local WC_toggleLoginSnapshot = nil
 local function WC_CaptureToggleLoginSnapshot()
@@ -5768,13 +5251,9 @@ local function FinishRun()
     -- The queue holds only sells since v0.6.0 (deletes are Delete Next).
     WC_batchTotalSold = WC_batchTotalSold + #queue
     WC_batchTotalGold = WC_batchTotalGold + (goldThisVendoring or 0)
-    -- v2.37.0: attribute the auto-cycle haul to the current zone so the
-    -- Stats panel's "Top Zones" rollup tracks worker sells too.
-    if (goldThisVendoring or 0) > 0 then
-        WC_compCache.attributeCopperToZone(goldThisVendoring)
-        if NS.StampBestGPH then
-            NS.StampBestGPH()
-        end
+    -- Zone total + gold-per-hour record for the run (Loot module).
+    if WC_compCache.onSoldCopper then
+        WC_compCache.onSoldCopper(goldThisVendoring)
     end
 
     -- One summary builder for the mid-run and final lines below, so the
@@ -6113,33 +5592,6 @@ end
 -- + WC_InstallTooltipHookOnce) lives in WoWClearance_Tooltip.lua after
 -- Stage 8c of the file split. Exposed as NS.InstallTooltipHookOnce for
 -- the ADDON_LOADED branch in this file to call.
-
-
--- v2.16.0: Fast Loot BoP-bind auto-dismiss. When Fast Loot is on and the
--- user loots a Bind-on-Pickup item, Blizzard normally shows a LOOT_BIND
--- popup asking "are you sure?". That popup blocks the rest of the loot
--- queue draining and defeats the point of Fast Loot. This hook auto-
--- confirms each LootSlot call and force-hides the popup. Self-gates on
--- DB.fastLoot at call time so non-Fast-Loot users keep the Blizzard
--- safety prompt. Idempotent: the hookedOnce guard makes a second call
--- cheap if anything ever calls this twice. Pattern borrowed from
--- LootClicker (others/LootClicker-master/core.lua:158-161).
-local WC_fastLootHooked = false
-local function WC_InstallFastLootHookOnce()
-    if WC_fastLootHooked then
-        return
-    end
-    WC_fastLootHooked = true
-    hooksecurefunc("LootSlot", function(slot)
-        if not DB or not DB.fastLoot then
-            return
-        end
-        ConfirmLootSlot(slot)
-        StaticPopup_Hide("LOOT_BIND")
-    end)
-end
-
-
 
 
 -- The list-row factories (WC_compCache.makeListRowFactory,
@@ -6669,31 +6121,8 @@ function WoWClearance_ToggleLootLog()
     EnsureDB()
     if NS.ToggleLootWindow then
         NS.ToggleLootWindow()
-    end
-end
-
--- Default key for the Loot Log: Shift+L. Claimed ONCE per account
--- (ADB.lootLogKeyClaimed) and only when both sides are free - the Loot Log
--- has no key yet AND nothing else uses Shift+L - so it never overwrites a
--- binding, and a player who later unbinds it does not get it back. Run a few
--- seconds after login, not at PLAYER_LOGIN itself: saving the binding set
--- before the client has loaded it could write over the player's bindings.
--- SetBinding is blocked in combat, so a combat login just tries next login.
-function WC_compCache.claimLootLogKey()
-    if not ADB or ADB.lootLogKeyClaimed or InCombatLockdown() then
-        return
-    end
-    ADB.lootLogKeyClaimed = true
-    if GetBindingKey("WOWCLEARANCE_TOGGLE_LOOTLOG") then
-        return
-    end
-    local current = GetBindingAction("SHIFT-L")
-    if current and current ~= "" then
-        return
-    end
-    if SetBinding("SHIFT-L", "WOWCLEARANCE_TOGGLE_LOOTLOG") then
-        SaveBindings(GetCurrentBindingSet())
-        PrintNice(L["Shift+L now opens the Loot Log. Change it under Key Bindings > WoWClearance."])
+    else
+        PrintNice(L["The Loot Log is part of the Loot module, which is off. Turn it on with the Loot module box on the main page."])
     end
 end
 
@@ -6896,32 +6325,7 @@ SlashCmdList["WOWCLEARANCE"] = function(msg)
             local n = NS.GuildShare.InjectTestPeers()
             PrintNicef(L["Injected %d simulated guild members. Open the Guild panel (or re-run this with it open) to see the pooled data."], n)
         else
-            PrintNice(L["|cffff4444Guild-share module not loaded.|r"])
-        end
-        return
-    end
-
-    if cmd == "servertest" then
-        -- v2.58.0: solo diagnostic for the Server Stats odometer. Injects fake
-        -- realm sharers (including a spoofed one the sanity cap must drop) so
-        -- the panel + live user-count can be exercised on one account.
-        if NS.ServerShare then
-            local n = NS.ServerShare.InjectTestPeers()
-            PrintNicef(L["Injected %d simulated realm sharer(s). Open the Server panel to see the odometer (the spoofed one should be ignored)."], n)
-        else
-            PrintNice(L["|cffff4444Server-share module not loaded.|r"])
-        end
-        return
-    end
-
-    if cmd == "realmtest" then
-        -- v2.58.0: solo diagnostic for the realm channel transport. Chat
-        -- channels echo your own messages, so this verifies join/hide/send/
-        -- receive with no second player.
-        if NS.RealmComms then
-            NS.RealmComms.RunSelfTest()
-        else
-            PrintNice(L["|cffff4444Realm comms module not loaded.|r"])
+            PrintNice(L["|cffff4444Stats - Guild is part of the Loot module, which is off.|r"])
         end
         return
     end
@@ -7096,10 +6500,7 @@ SlashCmdList["WOWCLEARANCE"] = function(msg)
     end
 
     if cmd == "loot" then
-        EnsureDB()
-        if NS.ToggleLootWindow then
-            NS.ToggleLootWindow()
-        end
+        WoWClearance_ToggleLootLog()
         return
     end
 
@@ -7436,15 +6837,6 @@ f:RegisterEvent("SPELLS_CHANGED")
 -- arrives. Handler self-gates on DB.autoOpenContainers, so users with the
 -- toggle off pay one early-return per combat exit.
 f:RegisterEvent("PLAYER_REGEN_ENABLED")
--- v2.16.0: drives the Fast Loot driver. Handler self-gates on
--- DB.fastLoot and on Blizzard's autoLootDefault CVar, so users without
--- the toggle on pay one early-return per loot interaction.
-f:RegisterEvent("LOOT_READY")
--- v0.7.0: looted coin (WC_compCache.lootMoneyEvent).
-f:RegisterEvent("LOOT_CLOSED")
-f:RegisterEvent("PLAYER_MONEY")
--- Loot Log History: group members' loot lines (WoWClearance_LootHistory.lua).
-f:RegisterEvent("CHAT_MSG_LOOT")
 -- Group-roster event for version-gossip probes (port work item 6).
 --
 -- WAS: PARTY_MEMBERS_CHANGED + RAID_ROSTER_UPDATE, with a comment saying
@@ -7472,7 +6864,6 @@ f:SetScript("OnEvent", function(self, event, ...)
             -- a single missing file kills the whole init chain at the
             -- nil call site, hiding which subsystem actually failed
             -- to load.
-            WC_InstallFastLootHookOnce()
             if NS.CreateMinimapButton then NS.CreateMinimapButton() end
             -- v0.5.2: install the Forever container-frame hooks once at
             -- login so bag highlighting appears without waiting for a list
@@ -7498,10 +6889,6 @@ f:SetScript("OnEvent", function(self, event, ...)
             end
             if WC_compCache.installHostBagItemLevelHook then
                 WC_compCache.installHostBagItemLevelHook()
-            end
-        elseif addonName == "Blizzard_InspectUI" then
-            if WC_compCache.installInspectItemLevelHook then
-                WC_compCache.installInspectItemLevelHook()
             end
         end
     elseif event == "PLAYER_LOGOUT" then -- luacheck: ignore 542
@@ -7566,39 +6953,11 @@ f:SetScript("OnEvent", function(self, event, ...)
         -- after a short settle, ask the guild for versions.
         if event == "PLAYER_LOGIN" then
             WC_compCache.loadSoldHistory()
-            NS.Delay(5, WC_compCache.claimLootLogKey)
-            -- Decode the saved Loot Log history (up to 20,000 entries, ~10 ms)
-            -- now, not inside the first bag update that records a pickup.
-            NS.Delay(6, function()
-                if NS.LootHistory and NS.LootHistory.Count then
-                    NS.LootHistory.Count()
-                end
-            end)
             NS.Delay(5, function()
                 if NS.Comms and GetGuildInfo("player") then
                     NS.Comms.FireVersionProbe("GUILD")
                 end
             end)
-            -- WC-TRAP: there is deliberately NO realm-channel join on login.
-            -- v2.58.0 joined the channel and fired a request 7s after
-            -- PLAYER_LOGIN, gated only on shareServerData. Removed, and it
-            -- must not come back as a convenience.
-            --
-            -- Why the gate was not enough. shareServerData was seeded ON, and
-            -- on build 69913 SavedVariables never read back, so the seed ran
-            -- again at every launch and the player's opt-out was erased before
-            -- this hook fired. The effect was that WoWClearance joined a chat
-            -- channel and broadcast on a LIVE Blizzard realm, on every login,
-            -- whatever the player had chosen. That is a decision for the
-            -- player and it was being taken for them silently.
-            --
-            -- The join now happens only where the player asks for it: the
-            -- "Stats - Server" panel toggle (WoWClearance_ServerStatsPanel),
-            -- in the same session, by hand. Nothing on a timer, nothing at
-            -- login. If realm sharing ever needs a login path again, it needs
-            -- consent the player gave, saved, and read back on a build where
-            -- saving is measured to work.
-            -- See PORT_STATUS work item 7.
         end
     elseif event == "PLAYER_REGEN_ENABLED" then
         -- Combat ended: re-fire the open driver. If the toggle is off or
@@ -7702,19 +7061,6 @@ f:SetScript("OnEvent", function(self, event, ...)
         -- Open` box).
         WC_compCache.bagUpdateAccum = 0
         WC_compCache.bagUpdateFrame:Show()
-    elseif event == "CHAT_MSG_LOOT" then
-        if NS.LootHistory then
-            NS.LootHistory.OnChatMsgLoot(...)
-        end
-    elseif event == "LOOT_READY" then
-        -- Coin baseline first: Fast Loot below can take the coin at once.
-        WC_compCache.lootMoneyEvent(event)
-        -- v2.16.0: Fast Loot driver. Self-gates on DB.fastLoot and on
-        -- Blizzard's autoLootDefault CVar so non-Fast-Loot users pay
-        -- one early-return per loot interaction.
-        WC_HandleLootReady()
-    elseif event == "LOOT_CLOSED" or event == "PLAYER_MONEY" then
-        WC_compCache.lootMoneyEvent(event)
     elseif event == "UNIT_SPELLCAST_SUCCEEDED" then
         -- Payload on Forever is (unitTarget, castGUID, spellID). 3.3.5a
         -- sent the spell NAME second; reading arg2 here got the castGUID,

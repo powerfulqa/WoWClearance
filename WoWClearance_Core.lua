@@ -125,6 +125,31 @@ function NS.SearchMatcher(text)
     end
 end
 
+-- The realm name, or nil when the client gives none. Since build 71037
+-- (2026-11-20) GetRealmName() returns "" to addons, and "" is truthy in Lua,
+-- so `GetRealmName() or "?"` never fell back. With no realm, use the realm
+-- of this character's one saved "First Surname-Realm" partition. With none
+-- (a new character) or several (the same name on two realms), nil: no
+-- guessing. WC_DBCharKey builds the per-character save key from this.
+function NS.RealmName()
+    local realm = GetRealmName and GetRealmName()
+    if realm and realm ~= "" then
+        return realm
+    end
+    local prefix = (GetUnitName("player", true) or "Unknown") .. "-"
+    local chars = type(WoWClearanceDB) == "table" and WoWClearanceDB.chars
+    local hit
+    for key in pairs(type(chars) == "table" and chars or {}) do
+        if type(key) == "string" and #key > #prefix and key:sub(1, #prefix) == prefix then
+            if hit then
+                return nil
+            end
+            hit = key:sub(#prefix + 1)
+        end
+    end
+    return hit
+end
+
 -- True when every non-nil argument is readable (shared kit; canaccessvalue
 -- takes ONE value, so chat handlers pass payload and sender through here).
 NS.CanRead = NS.Kit.CanRead

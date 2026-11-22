@@ -673,7 +673,8 @@ local function WC_AnnotateTooltip(tooltip)
         local DB, AS = NS.DB, NS.ADB and NS.ADB.accountStats
         if DB and DB.showItemStatsOnTooltip and AS then
             local sold = AS.soldItemCounts and AS.soldItemCounts[itemID] or 0
-            local looted = AS.lootedItemCounts and AS.lootedItemCounts[itemID] or 0
+            -- Looted counts only while the Loot module is on to keep them.
+            local looted = NS.lootSession and AS.lootedItemCounts and AS.lootedItemCounts[itemID] or 0
             local parts = {}
             if sold > 0 then
                 parts[#parts + 1] = string.format(L["Sold: %s"], NS.CommaNumber(sold))

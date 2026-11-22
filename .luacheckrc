@@ -104,7 +104,7 @@ read_globals = {
     "HideUIPanel",  -- v0.5.4: UIParentPanelManager.lua:903; verified by shipped-source grep
     "PlaySound", "SOUNDKIT", "StaticPopup_Show", "StaticPopup_Hide",
     "GameTooltip_Hide", "UIFrameFlash",
-    "CharacterFrame", "InspectFrame", "ColorPickerFrame",
+    "ColorPickerFrame",
     -- OpacitySliderFrame and OpenColorPicker are ABSENT on WoW: Forever and
     -- were removed from the code in work item 6. Deliberately NOT declared,
     -- so reintroducing either is a lint error rather than a silent nil - the
@@ -177,11 +177,7 @@ read_globals = {
     "ITEM_BIND_ON_EQUIP", "ITEM_BIND_ON_PICKUP",
     "ITEM_MILLABLE", "ITEM_PROSPECTABLE", "ITEM_SOULBOUND", "ITEM_SPELL_KNOWN",
     "ITEM_SPELL_TRIGGER_ONUSE",
-    -- Merchant / buyback
-    "GetBuybackItemLink", "BUYBACK_ITEMS_PER_PAGE", "MERCHANT_ITEMS_PER_PAGE",
-    -- Loot
-    "LootSlot", "GetLootSlotInfo", "GetLootSlotLink", "GetNumLootItems",
-    "ConfirmLootSlot",
+
     -- Unit / player (more)
     "UnitLevel", "UnitCastingInfo",
     -- Spellbook (recipe learn-state scans)
@@ -202,12 +198,6 @@ read_globals = {
     "GetRealZoneText", "GetLocale", "GetGuildInfo", "GetInventoryItemID",
     "GetFramerate",
     -- Addon-to-addon comms transport
-    -- Realm channel (WoWClearance_RealmComms.lua): addon messages on a
-    -- temporary custom channel. All four are in the captured Forever API
-    -- surface; Blizzard's own SlashCommands.lua / ChatFrame.lua call the
-    -- leave and remove-window ones.
-    "GetChannelName", "JoinTemporaryChannel", "LeaveChannelByName", "RemoveChatWindowChannel",
-    "NUM_CHAT_WINDOWS",
     -- Bit library (3.3.5a exposes the BitLib `bit` table globally)
     "bit",
 
@@ -279,7 +269,12 @@ read_globals = {
         },
     },
     C_AddOns = {
-        fields = { "GetAddOnMetadata", "GetAddOnInfo", "IsAddOnLoaded", "GetNumAddOns" },
+        fields = {
+            "GetAddOnMetadata", "GetAddOnInfo", "IsAddOnLoaded", "GetNumAddOns",
+            -- Loot module: core namespace access + its on/off switch.
+            "GetAddOnLocalTable", "DoesAddOnExist", "GetAddOnEnableState",
+            "EnableAddOn", "DisableAddOn",
+        },
     },
     C_ChatInfo = {
         -- RegisterAddonMessagePrefix is MANDATORY on this client: without it

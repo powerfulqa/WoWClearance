@@ -104,7 +104,7 @@ local function WC_BuildBugReport()
 
     local version = NS.GetVersion()
     local player = GetUnitName("player", true) or "Unknown"
-    local realm = GetRealmName() or "Unknown"
+    local realm = NS.RealmName() or "Unknown"
     local dateStr = date("%Y-%m-%d %H:%M")
     local className = UnitClass and UnitClass("player") or "Unknown"
     local level = UnitLevel and UnitLevel("player") or 0
@@ -275,7 +275,11 @@ local function WC_BuildBugReport()
 
     add("--- Looting ---")
     add("Auto-Open Containers: " .. tostring(DB.autoOpenContainers))
-    add("Fast Loot: " .. tostring(DB.fastLoot))
+    -- v0.9.0: the optional Loot module (Loot Log, gold per hour, Stats -
+    -- Guild) is a separate addon; say whether it is running this session.
+    add("Loot Module Loaded: " .. tostring(C_AddOns.IsAddOnLoaded("WoWClearance_Loot") and true or false))
+    add("Share with Guild: " .. tostring(WoWClearanceDB.shareGuildData == true)
+        .. " (show name: " .. tostring(WoWClearanceDB.shareGuildName == true) .. ")")
     add("")
 
     -- v2.13.1 Runtime State section. Snapshots in-flight signals so a
@@ -896,7 +900,9 @@ local function WC_BuildBugReport()
             end
             local function printOne(e)
                 if e.version ~= "" then
-                    add("  " .. e.name .. " (" .. e.title .. ") v" .. e.version)
+                    -- Many tocs already write "v1.2.3"; don't print "vv1.2.3".
+                    local ver = e.version:find("^[vV]") and e.version or ("v" .. e.version)
+                    add("  " .. e.name .. " (" .. e.title .. ") " .. ver)
                 else
                     add("  " .. e.name .. " (" .. e.title .. ")")
                 end
@@ -968,7 +974,7 @@ local function WC_BuildRuleSummary()
 
     add("=== WoWClearance Rule Summary ===")
     add("Generated: " .. (date and date("%Y-%m-%d %H:%M:%S") or "?"))
-    add("Player: " .. (GetUnitName("player", true) or "?") .. "-" .. (GetRealmName() or "?"))
+    add("Player: " .. (GetUnitName("player", true) or "?") .. "-" .. (NS.RealmName() or "?"))
     add("Addon: " .. (NS.GetVersion and NS.GetVersion() or "?"))
     add("")
     add("Master switch: " .. onoff(DB and DB.enabled ~= false))
@@ -1119,7 +1125,7 @@ local function WC_BuildProcessDebugDump()
     end
     add("=== WoWClearance Process Bags Debug Dump ===")
     add("Generated: " .. (date and date("%Y-%m-%d %H:%M:%S") or "?"))
-    add("Player: " .. (GetUnitName("player", true) or "?") .. "-" .. (GetRealmName() or "?"))
+    add("Player: " .. (GetUnitName("player", true) or "?") .. "-" .. (NS.RealmName() or "?"))
     add("Class: " .. (UnitClass and (UnitClass("player")) or "?") .. " / Level " .. tostring(UnitLevel and UnitLevel("player") or "?"))
     add("Locale: " .. (GetLocale and GetLocale() or "?"))
     add("Addon: " .. (NS.GetVersion and NS.GetVersion() or "?"))

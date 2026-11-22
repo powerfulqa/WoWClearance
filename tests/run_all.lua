@@ -18,9 +18,8 @@ local TESTS = {
     "tests/test_perf_guardrails.lua",
     "tests/test_comment_hygiene.lua",
     "tests/test_comms_version.lua",
-    "tests/test_guildshare.lua",
     "tests/test_loothistory.lua",
-    "tests/test_servershare.lua",
+    "tests/test_guildshare.lua",
 }
 
 -- Reuse whichever interpreter is running this file (lua, lua5.1, full path).

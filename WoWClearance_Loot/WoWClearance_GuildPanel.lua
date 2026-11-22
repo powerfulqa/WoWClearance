@@ -6,8 +6,8 @@
 -- Interface Options sub-panel for guild-share: opt-in toggle,
 -- best farming zones aggregate, guild totals, quality breakdown,
 -- most-sold items with hover tooltips, and a manual refresh button.
--- Registered centrally in WoWClearance_Events.lua (loads after this
--- file, so the frame exists when AddCategory is called).
+-- Part of the optional Loot module since v0.9.0; listed in the core's
+-- WC_PANEL_ORDER (Window.lua), which skips it when the module is off.
 --
 -- Dependencies satisfied by NS:
 --   * NS.compCache (Core)           - initPanel, setPanelWidth
@@ -19,10 +19,28 @@
 --   * NS.GuildShare                 - GetAggregate, RequestNow
 --   * NS.Delay                      - deferred repaint after request
 
-local NS = select(2, ...)
+local NS = select(2, ...).core
+if not NS then
+    return
+end
 local GetItemInfo = C_Item.GetItemInfo
 local WC_compCache = NS.compCache
 local L = NS.L
+
+-- Item hover for the most-sold rows (row.itemID).
+local function installItemHover(row)
+    row:EnableMouse(true)
+    row:SetScript("OnEnter", function(self)
+        if self.itemID then
+            GameTooltip:SetOwner(self, "ANCHOR_CURSOR")
+            GameTooltip:SetHyperlink("item:" .. self.itemID)
+            GameTooltip:Show()
+        end
+    end)
+    row:SetScript("OnLeave", function()
+        GameTooltip:Hide()
+    end)
+end
 
 local GuildPanel = CreateFrame(
     "Frame",
@@ -543,7 +561,7 @@ GuildPanel:SetScript("OnShow", function(self)
             row:Hide()
             -- Item hover tooltip - wired once at build time (shared helper,
             -- v2.63.0; identical wiring lives on the Stats - Server rows).
-            NS.InstallStatRowItemHover(row)
+            installItemHover(row)
             buildSelf._itemRows[i] = row
             iPrev = row
             iYOff = -2
@@ -606,4 +624,4 @@ NS.RefreshGuildPanel = function()
     repaintGuildPanel()
 end
 
--- Registration is handled centrally in WoWClearance_Events.lua.
+-- The sidebar lists this panel through WC_PANEL_ORDER in WoWClearance_Window.lua.

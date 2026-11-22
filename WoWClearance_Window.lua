@@ -57,7 +57,7 @@ local function WC_secureLocked()
 end
 
 -- Sidebar order: the one copy. Configuration panels first, then the stats
--- dashboards (Personal, Guild, Server kept adjacent), then the curated lists
+-- dashboard, then the curated lists
 -- (Keep Settings under Keep List, mirroring Delete List + Delete Settings),
 -- then the tools. Panels live here, not as Settings sub-categories, because
 -- a panel rendered inside SettingsPanel closes the player's bags.
@@ -66,8 +66,9 @@ local WC_PANEL_ORDER = {
     "WoWClearanceOptionsMerchant",
     "WoWClearanceOptionsCharacter",
     "WoWClearanceOptionsStats",
+    -- Optional Loot module (WoWClearance_Loot); skipped when it is off.
+    "WoWClearanceOptionsLoot",
     "WoWClearanceOptionsGuild",
-    "WoWClearanceOptionsServer",
     "WoWClearanceOptionsWhitelist",
     "WoWClearanceOptionsAccountWhitelist",
     "WoWClearanceOptionsBlacklist",

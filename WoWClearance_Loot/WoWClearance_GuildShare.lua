@@ -4,7 +4,10 @@
 -- ignored and never stored or shown; only pooled aggregates are displayed. (A
 -- 3.3.5a addon message always carries its sender, so this is anonymity at the
 -- display/storage layer, not concealment from anyone logging addon traffic.)
-local NS = select(2, ...)
+local NS = select(2, ...).core
+if not NS then
+    return
+end
 local GetItemInfo = C_Item.GetItemInfo
 
 local GuildShare = {}

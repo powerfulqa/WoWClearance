@@ -116,38 +116,50 @@ local function WC_buildHelpEntries()
     {
         id = "stats-overview",
         q = L["What does the Stats panel show?"],
-        a = L["The Stats panel tracks lifetime totals from using WoWClearance: money earned, gold looted, items sold, items deleted, repairs and repair cost, and Net (money earned plus gold looted, minus repairs). It also shows current-session gold-per-hour (sales plus looted gold) and your best gold-per-hour record (with the zone and date). |cffb6ffb6Last 7 Days|r lists each day's net gold and how many items were sold, deleted and looted, across all your characters. Gold looted counts coin taken from a loot window. Reset Session clears the session deltas; Reset Lifetime wipes the lifetime totals (with a confirmation popup). Stats don't include items bought back from vendors."],
+        a = L["The Stats panel tracks lifetime totals from using WoWClearance: money earned, items sold, items deleted, repairs and repair cost, and Net (money earned minus repairs). |cffb6ffb6Last 7 Days|r lists each day's net gold and how many items were sold and deleted, across all your characters. Reset Session clears the session deltas; Reset Lifetime wipes the lifetime totals (with a confirmation popup). Stats don't include items bought back from vendors.\n\nGold looted, gold per hour and Top Zones are on the |cffb6ffb6Stats - Loot|r page, part of the optional Loot module."],
         panel = "WoWClearanceOptionsStats",
     },
     {
         id = "tooltip-extras",
         q = L["What are the Bank and Sold / Looted lines on item tooltips?"],
-        a = L["|cffb6ffb6Bank: N|r shows how many of that item are in your bank. It only appears when you have some there, and not when another addon already shows bank counts.\n\n|cffb6ffb6Sold: N   Looted: N|r shows how many you have sold and looted with WoWClearance, across all your characters. Turn it off with 'Show how many you've sold and looted' on the Item Highlighting page."],
+        a = L["|cffb6ffb6Bank: N|r shows how many of that item are in your bank. It only appears when you have some there, and not when another addon already shows bank counts.\n\n|cffb6ffb6Sold: N   Looted: N|r shows how many you have sold and looted with WoWClearance, across all your characters. Looted shows only while the Loot module is on. Turn it off with 'Show how many you've sold and looted' on the Item Highlighting page."],
         panel = "WoWClearanceOptionsCharacter",
     },
     {
         id = "stats-character-vs-account",
         q = L["Character view vs Account view in the Stats panel?"],
-        a = L["The toggle at the top of the Stats panel picks which totals to show. |cffb6ffb6Character|r shows just the currently logged-in character's lifetime totals - the original behaviour. |cffb6ffb6Account|r shows the same fields summed across every character on this account that has used WoWClearance.\n\nAccount totals count from the date shown under the toggle; older history stays on each character's own Character view. The Account view's Best Gold/Hour ribbon names which character set the record.\n\n|cffffd870Reset Lifetime|r is view-aware: in Character view it clears just this character; in Account view it clears just the account ledger, leaving every character's own totals intact."],
+        a = L["The toggle at the top of the Stats panel picks which totals to show. |cffb6ffb6Character|r shows just the currently logged-in character's lifetime totals - the original behaviour. |cffb6ffb6Account|r shows the same fields summed across every character on this account that has used WoWClearance.\n\nAccount totals count from the date shown under the toggle; older history stays on each character's own Character view.\n\n|cffffd870Reset Lifetime|r is view-aware: in Character view it clears just this character; in Account view it clears just the account ledger, leaving every character's own totals intact."],
         panel = "WoWClearanceOptionsStats",
     },
     {
         id = "stats-city-filter",
         q = L["Why don't my sales in cities count on the Top Zones list?"],
         a = L["Selling mailboxed items in a capital city (Dalaran, Stormwind, Orgrimmar, Ironforge, Darnassus, The Exodar, Thunder Bluff, Undercity, Silvermoon, Shattrath) isn't farming, so those coppers no longer land on the Top Zones leaderboard. Your total gold earned is unaffected - only the per-zone breakdown skips cities. Sub-town hubs with mailboxes (Booty Bay, Ratchet, Everlook, etc.) still count because their surrounding zones are farmable."],
-        panel = "WoWClearanceOptionsStats",
+        panel = "WoWClearanceOptionsLoot",
+    },
+    {
+        id = "loot-module",
+        q = L["What is the Loot module?"],
+        a = L["An optional part of WoWClearance that comes in the same download as a second addon, WoWClearance Loot. It adds the Loot Log, gold looted, gold per hour and your Top Zones, on the |cffb6ffb6Stats - Loot|r page.\n\nIt is on by default. Turn it off or on with the |cffb6ffb6Loot module|r box on the main page, or in the game's AddOn list, then reload. Your loot data is kept while it is off."],
+        panel = "WoWClearanceOptionsMain",
+    },
+    {
+        id = "guild-sharing",
+        q = L["What is the Stats - Guild panel?"],
+        a = L["Stats - Guild pools data from guildmates (and group members) who also run WoWClearance and have opted in: their best farming zones, combined totals, and most-sold items. It is anonymous by default and guild/group only - nothing is shared server-wide. It is part of the optional Loot module.\n\nTwo boxes on the panel: 'Share my farming data with my guild' turns your sharing on (off by default), and 'Show my name with my shared data' optionally attaches your name (only available while sharing is on).\n\nThe view is a live snapshot taken when you open the panel or click Refresh - it is not saved, so it reflects whoever is online and sharing right now. Your own lifetime stats keep growing as usual; the guild view just re-pools everyone's current totals each time you look."],
+        panel = "WoWClearanceOptionsGuild",
     },
     {
         id = "session-loot",
         q = L["What is the Loot Log window?"],
-        a = L["A window that lists what you've looted and how much. It counts what you actually loot - and ignores items you buy from a vendor, take from the mailbox, withdraw from the bank, or receive from quests.\n\nOpen it with the |cffb6ffb6Loot Log|r button on the main settings page or the Stats panel, by typing /wc loot, or with a key you bind under Key Bindings > WoWClearance.\n\nEach row shows how many you looted, that stack's vendor value (quantity x sell price), and that value's share of your total looted gold - so you can see which drops actually earn and which are dead weight (a worthless drop shows a grey dash and 0%, the cue to filter or delete it). Sort by Name, Count, or Gold (click again to flip the order) - Count and Gold differ when a high-volume drop is low-value. Use Show: to filter by rarity and the Search box to find an item by name, and drag the bottom-right corner to resize. Click a row to show only that item; click it again to show everything. In the Search box, put a name in \"quotes\" to match it exactly, and use || to search for more than one thing (wool || silk). Filtering rebases the totals, so narrowing to Epics shows each Epic's share of your Epics.\n\n|cffb6ffb6Right-click a row to hide that item|r - hidden items drop out of the list AND the totals, so the remaining shares rebase (handy when a high-volume filler like cloth is skewing the percentages); the |cffb6ffb6Unhide All|r button restores them. Hold |cffb6ffb6Alt|r and hover a row for a plain-English read on what WoWClearance will do with that item.\n\nFour views: |cffb6ffb6Session|r (looted since login; resets on /reload or Reset Session Stats), |cffb6ffb6Character|r (this character's lifetime), |cffb6ffb6Account|r (a running total across all your characters), and |cffb6ffb6History|r (one line per pickup, with who looted it; hover for when). The first three are tallied per item, so the window stays light no matter how long you farm. Clear wipes whichever view you're looking at."],
-        panel = "WoWClearanceOptionsStats",
+        a = L["A window that lists what you've looted and how much. It counts what you actually loot - and ignores items you buy from a vendor, take from the mailbox, withdraw from the bank, or receive from quests.\n\nIt is part of the optional Loot module. Open it with the |cffb6ffb6Loot Log|r button on the Stats - Loot page, by typing /wc loot, or with a key you bind under Key Bindings > WoWClearance.\n\nEach row shows how many you looted, that stack's vendor value (quantity x sell price), and that value's share of your total looted gold - so you can see which drops actually earn and which are dead weight (a worthless drop shows a grey dash and 0%, the cue to filter or delete it). Sort by Name, Count, or Gold (click again to flip the order) - Count and Gold differ when a high-volume drop is low-value. Use Show: to filter by rarity and the Search box to find an item by name, and drag the bottom-right corner to resize. Click a row to show only that item; click it again to show everything. In the Search box, put a name in \"quotes\" to match it exactly, and use || to search for more than one thing (wool || silk). Filtering rebases the totals, so narrowing to Epics shows each Epic's share of your Epics.\n\n|cffb6ffb6Right-click a row to hide that item|r - hidden items drop out of the list AND the totals, so the remaining shares rebase (handy when a high-volume filler like cloth is skewing the percentages); the |cffb6ffb6Unhide All|r button restores them. Hold |cffb6ffb6Alt|r and hover a row for a plain-English read on what WoWClearance will do with that item.\n\nFour views: |cffb6ffb6Session|r (looted since login; resets on /reload or Reset Session Stats), |cffb6ffb6Character|r (this character's lifetime), |cffb6ffb6Account|r (a running total across all your characters), and |cffb6ffb6History|r (one line per pickup, with who looted it; hover for when). The first three are tallied per item, so the window stays light no matter how long you farm. Clear wipes whichever view you're looking at."],
+        panel = "WoWClearanceOptionsLoot",
     },
     {
         id = "loot-history",
         q = L["What does the Loot Log History view show?"],
         a = L["One line per item picked up: who looted it, what, and how many. Hover a line to see when. It covers your own loot on every character, plus what group members loot when the game shows it in chat. Newest first by default; the Sort buttons (Time, Name, Count, Gold) change the order. It keeps the last 20,000 pickups and is saved between sessions. Search matches player names as well as items. The time list next to the search box shows only the last hour, day, 7 days or 30 days. Clear wipes the history."],
-        panel = "WoWClearanceOptionsStats",
+        panel = "WoWClearanceOptionsLoot",
     },
     {
         id = "junk-button",
@@ -166,18 +178,6 @@ local function WC_buildHelpEntries()
         q = L["Can I open WoWClearance without the minimap button?"],
         a = L["Yes. WoWClearance is listed under the small numbered addon button next to the clock (only when it is enabled for all characters). Left-click it to open settings, right-click to turn WoWClearance on or off. You can also type /wc."],
         panel = "WoWClearanceOptionsMain",
-    },
-    {
-        id = "guild-sharing",
-        q = L["What is the Stats - Guild panel?"],
-        a = L["Stats - Guild pools data from guildmates (and group members) who also run WoWClearance and have opted in: their best farming zones, combined totals, and most-sold items. It is anonymous by default and guild/group only - nothing is shared server-wide.\n\nTwo boxes on the panel: 'Share my farming data with my guild' turns your sharing on (off by default), and 'Show my name with my shared data' optionally attaches your name (only available while sharing is on).\n\nThe view is a live snapshot taken when you open the panel or click Refresh - it is not saved, so it reflects whoever is online and sharing right now. Your own lifetime stats keep growing as usual; the guild view just re-pools everyone's current totals each time you look."],
-        panel = "WoWClearanceOptionsGuild",
-    },
-    {
-        id = "server-stats",
-        q = L["What is the Stats - Server panel?"],
-        a = L["Stats - Server is a live, anonymous 'odometer' for the whole realm: the combined gold vendored, items sold, items deleted, and items processed by everyone running WoWClearance who is online and sharing right now, plus the realm's busiest farming zones and most-sold items, and a count of how many users are sharing. It never shows names and is not a ranking - just community totals for fun.\n\nSharing is off by default; tick 'Share my totals with the realm' on the panel if you want to join in.\n\nThis uses a private chat channel, which takes one of your 10 chat-channel slots while sharing is on. Turning sharing off leaves it. You only see players on your own realm, even if you see others in town. The numbers reflect who is online and sharing at that moment, not an all-time server record, so they rise and fall as people log in and out.\n\nSharing also puts you on the realm channel, so your normal update alerts (the version-check toggle on the main page) will then tell you about a newer WoWClearance seen anywhere on the realm, not just your guild or group."],
-        panel = "WoWClearanceOptionsServer",
     },
     {
         id = "what-are-profiles",
@@ -277,8 +277,8 @@ local function WC_buildHelpEntries()
     },
     {
         id = "tshoot-item-level-overlay",
-        q = L["Show item levels on your gear slots"],
-        a = L["Tick 'Show item level on slots' in the panel below to paint the iLvl in the bottom-right corner of every equippable item. The setting has 3 sub-toggles: bags (default on when the master flips on), character sheet & inspect, and merchant. Consumables and quest items are skipped. Quality-coloured."],
+        q = L["Show item levels on your bag slots"],
+        a = L["Tick 'Show item level on slots' in the panel below to show the item level in the corner of gear in your bags and bank. Consumables and quest items are skipped. The number is coloured by quality."],
         panel = "WoWClearanceOptionsCharacter",
     },
     {
@@ -698,12 +698,6 @@ local function WC_buildHelpEntries()
         id = "scav-auto-open",
         q = L["Auto-open lootable containers"],
         a = L["When on, WoWClearance opens lootable containers sitting in your bags (gift bags, treasure pouches, and similar) so you don't have to right-click each one. Lockboxes that need a key or a lockpick are skipped, and it pauses during combat. Set it on the Process Bags panel."],
-        panel = "WoWClearanceOptionsProcessBags",
-    },
-    {
-        id = "scav-fast-loot",
-        q = L["Fast Loot (instant corpse looting)"],
-        a = L["Speeds up looting from corpses, fishing, gift bags, dungeons, and mailboxes by draining the loot window the instant it opens. It uses your game's |cffffff00Auto Loot|r setting, so turn Auto Loot on for the full effect. Set it on the Process Bags panel."],
         panel = "WoWClearanceOptionsProcessBags",
     },
     -- ===================================================================

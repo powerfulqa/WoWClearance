@@ -7,7 +7,7 @@
 -- character's loot shows in one place.
 --
 -- Two sources feed it:
---   * Your own loot: WC_BumpLoot in the event hub calls LootHistory.Add with
+--   * Your own loot: bumpLoot in WoWClearance_LootCapture.lua calls LootHistory.Add with
 --     the bag-delta count, so auto-loot, pet loot and AOE loot all land here
 --     exactly as they land in the aggregate views.
 --   * Group members: CHAT_MSG_LOOT lines naming someone else. Parsed with
@@ -33,7 +33,10 @@
 -- Only worth having because SavedVariables read-back works on this client
 -- from build 70170 on (see the hard release gate in docs/PORT_STATUS.md).
 -- On a build where it does not, this log silently restarts every launch.
-local NS = select(2, ...)
+local NS = select(2, ...).core
+if not NS then
+    return
+end
 
 local LootHistory = {}
 NS.LootHistory = LootHistory
@@ -102,7 +105,8 @@ local function store()
 end
 
 local function ownRealm()
-    local realm = GetRealmName and GetRealmName() or ""
+    -- NS.RealmName: "" from the client counts as no realm (build 71037).
+    local realm = NS.RealmName() or ""
     -- Chat names carry the realm with spaces and hyphens stripped.
     return (realm:gsub("[%s%-]", ""))
 end

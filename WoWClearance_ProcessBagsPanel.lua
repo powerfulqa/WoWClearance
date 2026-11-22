@@ -851,13 +851,9 @@ ProcessBagsPanel:SetScript("OnShow", function(self)
         if self.UpdateDEDropdownText then
             self:UpdateDEDropdownText()
         end
-        -- v2.74.0: the two looting toggles moved here from the companion
-        -- panel; re-sync them on re-show like every other DB-backed box.
+        -- Re-sync the looting toggle on re-show like every other DB-backed box.
         if self.autoOpenCB then
             self.autoOpenCB:SetChecked(DB.autoOpenContainers)
-        end
-        if self.fastLootCB then
-            self.fastLootCB:SetChecked(DB.fastLoot)
         end
         -- Reset the armed cursor so re-opening the panel starts fresh
         -- rather than honouring a stale skip from a previous session.
@@ -1103,35 +1099,8 @@ ProcessBagsPanel:SetScript("OnShow", function(self)
             end
         end
 
-        -- v2.16.0: Fast Loot. When on AND Blizzard's auto-loot CVar is
-        -- effectively enabled (autoLootDefault XOR'd with the
-        -- AUTOLOOTTOGGLE modifier), WC drains every slot in the loot
-        -- window the moment LOOT_READY fires - the loot frame flashes
-        -- briefly or skips entirely, and BoP-bind popups are auto-
-        -- confirmed for items that would otherwise interrupt the drain.
-        local fastLootCB = NS.AddCheckbox(
-            content,
-            "WoWClearanceFastLootCB",
-            autoOpenCB,
-            L["Fast Loot (instant corpse looting)"],
-            function()
-                return DB.fastLoot
-            end,
-            function(v)
-                DB.fastLoot = v
-            end,
-            -4
-        )
-        self.fastLootCB = fastLootCB
-        do
-            local t = _G[fastLootCB:GetName() .. "Text"]
-            if t then
-                NS.AddHelpIcon(content, t, "LEFT", "RIGHT", 6, 0, "scav-fast-loot")
-            end
-        end
-
         local scrollBg = CreateFrame("Frame", nil, content, "BackdropTemplate")
-        scrollBg:SetPoint("TOPLEFT", fastLootCB, "BOTTOMLEFT", -4, -10)
+        scrollBg:SetPoint("TOPLEFT", autoOpenCB, "BOTTOMLEFT", -4, -10)
         scrollBg:SetPoint("BOTTOMRIGHT", content, "BOTTOMRIGHT", -12, 62)
         scrollBg:SetBackdrop({
             bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",

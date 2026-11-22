@@ -369,17 +369,13 @@ CharPanel:SetScript("OnShow", function(self)
             end
         end
 
-        -- v2.37.0 (Borrow C): item-level text overlay. Master toggle +
-        -- 3 sub-toggles for the surfaces it can paint (bags / paperdoll
-        -- / merchant). Sub-toggles disable when the master is off so
-        -- the player doesn't accidentally configure a hidden state.
-        -- First-enable seeding (bags on, others off) happens in EnsureDB
-        -- so it's idempotent across /reload + survives Reset Lifetime.
+        -- v2.37.0 (Borrow C): item-level text overlay on bag slots. Master
+        -- toggle + font size; the slider disables when the master is off.
         -- The -18 x-offset un-nests this section header from the
         -- indented per-category rows above.
         local iLvlHeader = content:CreateFontString(nil, "ARTWORK", "GameFontNormal")
         iLvlHeader:SetPoint("TOPLEFT", lastRowAnchor, "BOTTOMLEFT", -18, -16)
-        iLvlHeader:SetText(L["Item level on equipment slots"])
+        iLvlHeader:SetText(L["Item level on bag slots"])
 
         local iLvlMainCB = CreateFrame(
             "CheckButton",
@@ -398,71 +394,17 @@ CharPanel:SetScript("OnShow", function(self)
             NS.AddHelpIcon(content, iLvlMainText, "LEFT", "RIGHT", 6, 0, "tshoot-item-level-overlay")
         end
 
-        local ITEM_LEVEL_SUB_TOGGLES = {
-            { key = "bags", label = L["On bags (and bank)"] },
-            { key = "paperdoll", label = L["On character sheet & inspect"] },
-            { key = "merchant", label = L["On merchant window"] },
-        }
-        local iLvlSubCBs = {}
-
-        local function syncILvlSubsEnabled()
-            local on = DB.itemHighlighting ~= false and DB.itemLevelOverlay.enabled
-            for _, sub in ipairs(ITEM_LEVEL_SUB_TOGGLES) do
-                local cb = iLvlSubCBs[sub.key]
-                if cb then
-                    setControlOn(cb, on)
-                    cb:SetChecked(DB.itemLevelOverlay[sub.key])
-                end
-            end
-        end
-
-        -- Master OnClick wired AFTER the slider is built so the sync
-        -- helpers for both the sub-toggles and the slider can fire in
-        -- the same handler. v2.37.0 polish: the previous shape did two
-        -- separate SetScript calls and chained via GetScript, which
-        -- doesn't behave reliably for anonymous Lua closures on
-        -- 3.3.5a - the first handler could be silently dropped. One
-        -- handler = no chain, no surprises.
-        local lastILvlAnchor = iLvlMainCB
-        for i, sub in ipairs(ITEM_LEVEL_SUB_TOGGLES) do
-            local cb = CreateFrame(
-                "CheckButton",
-                "WoWClearanceILvlCB_" .. sub.key,
-                content,
-                "InterfaceOptionsCheckButtonTemplate"
-            )
-            local xOff = (i == 1) and 18 or 0
-            cb:SetPoint("TOPLEFT", lastILvlAnchor, "BOTTOMLEFT", xOff, -4)
-            cb:SetChecked(DB.itemLevelOverlay[sub.key])
-            local cbText = _G[cb:GetName() .. "Text"]
-            if cbText then
-                cbText:SetText(sub.label)
-                cbText:SetJustifyH("LEFT")
-            end
-            cb:SetScript("OnClick", function()
-                DB.itemLevelOverlay[sub.key] = cb:GetChecked() and true or false
-                PlaySound(SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON)
-                if NS.RefreshItemLevelOverlay then
-                    NS.RefreshItemLevelOverlay()
-                end
-            end)
-            iLvlSubCBs[sub.key] = cb
-            lastILvlAnchor = cb
-        end
-        syncILvlSubsEnabled()
-
         -- v2.37.0 (Borrow C polish): font-size slider for the iLvl text.
         -- Default 12 (matches the original NumberFontNormalSmall size);
         -- player can scale down to 6 for crowded bag layouts or up to
-        -- 20 for high-DPI displays. The slider greys out alongside the
-        -- sub-toggles when the master is off.
+        -- 20 for high-DPI displays. The slider greys out when the master is off.
         local iLvlSlider = CreateFrame(
             "Slider",
             "WoWClearanceILvlFontSizeSlider",
             content,
             "OptionsSliderTemplate"
         )
-        iLvlSlider:SetPoint("TOPLEFT", lastILvlAnchor, "BOTTOMLEFT", 0, -18)
+        iLvlSlider:SetPoint("TOPLEFT", iLvlMainCB, "BOTTOMLEFT", 18, -18)
         iLvlSlider:SetWidth(180)
         iLvlSlider:SetMinMaxValues(6, 20)
         iLvlSlider:SetValueStep(1)
@@ -511,7 +453,7 @@ CharPanel:SetScript("OnShow", function(self)
 
         -- Grey out everything under a switch that is off: the master
         -- switch covers every option, "Show borders" covers its colour
-        -- rows, and "Show item level" covers its sub-options.
+        -- rows, and "Show item level" covers its font size.
         self.syncHighlightControls = function()
             local on = DB.itemHighlighting ~= false
             local bordersOn = on and DB.sellBorderEnabled and true or false
@@ -526,20 +468,18 @@ CharPanel:SetScript("OnShow", function(self)
                 end
             end
             setControlOn(iLvlMainCB, on)
-            syncILvlSubsEnabled()
             syncILvlSliderEnabled()
         end
         self.syncHighlightControls()
 
         -- Now wire the master OnClick. Runs everything that depends on
-        -- the master state: save the toggle, sync sub-toggle enable
-        -- state, sync slider enable state, repaint visible slots.
+        -- the master state: save the toggle, sync slider enable state,
+        -- repaint visible slots.
         -- Single SetScript call - no chain via GetScript (which can
         -- swallow anonymous closures on 3.3.5a).
         iLvlMainCB:SetScript("OnClick", function()
             DB.itemLevelOverlay.enabled = iLvlMainCB:GetChecked() and true or false
             PlaySound(SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON)
-            syncILvlSubsEnabled()
             syncILvlSliderEnabled()
             if NS.RefreshItemLevelOverlay then
                 NS.RefreshItemLevelOverlay()

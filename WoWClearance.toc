@@ -1,6 +1,6 @@
 ## Interface: 16001
 ## Title: |cff66ccffWoWClearance|r
-## Notes: |cffffb84dBag manager for WoW: Forever|r. Vendoring, deletion, looting, protection rules, and bulk profession processing.
+## Notes: |cffffb84dSells and deletes what you don't want, keeps what you do|r. Vendor selling, Delete Next, protection rules and bag processing.
 ## Author: Serv
 ## Category: Inventory
 ## X-Website: https://github.com/powerfulqa/WoWClearance
@@ -9,6 +9,9 @@
 ## IconTexture: Interface\Icons\INV_Misc_Coin_01
 ## AddonCompartmentFunc: WoWClearance_OnAddonCompartmentClick
 ## OptionalDeps: DaylightUI, DaylightUI_Skins, DaylightUI_Bags
+# Lets the optional WoWClearance_Loot module reach this addon's namespace
+# through C_AddOns.GetAddOnLocalTable, so no extra global is needed.
+## AllowAddOnTableAccess: 1
 
 # Bindings.xml is deliberately NOT listed. The client auto-loads a file of
 # that exact name from the addon folder. Listing it here ALSO parses it as a
@@ -34,8 +37,6 @@ WoWClearance_ItemHighlightingPanel.lua
 WoWClearance_ProfilesPanel.lua
 WoWClearance_MainPanel.lua
 WoWClearance_StatsPanel.lua
-WoWClearance_GuildPanel.lua
-WoWClearance_ServerStatsPanel.lua
 WoWClearance_PanelWidgets.lua
 WoWClearance_ListWidget.lua
 # Standalone config window. Must load BEFORE any file that calls NS.SkinWindow
@@ -49,12 +50,8 @@ WoWClearance_ListWidget.lua
 WoWClearance_Window.lua
 WoWClearance_QuickstartPanel.lua
 WoWClearance_Events.lua
-WoWClearance_LootHistory.lua
 WoWClearance_HistoryWindow.lua
 WoWClearance_Comms.lua
-WoWClearance_RealmComms.lua
-WoWClearance_GuildShare.lua
-WoWClearance_ServerShare.lua
 WoWClearance_BagDisplay.lua
 WoWClearance_BugReport.lua
 WoWClearance_Minimap.lua

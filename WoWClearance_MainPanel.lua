@@ -151,8 +151,7 @@ end
 -- The Stats panel's 1Hz tick used to run the FULL repaint (~40 SetTexts +
 -- a 6-section re-anchor pass) every second while open, even when nothing
 -- changed. The tick now compares this token and only full-repaints on a
--- real change; between changes it refreshes just the time-varying
--- Gold/Hour rows. Session-suffix fields only ever change alongside these
+-- real change. Session-suffix fields only ever change alongside these
 -- lifetime counters (a session reset repaints via its direct
 -- NS.RefreshStats call), so they don't need their own terms.
 local function WC_statsChangeToken(src)
@@ -161,7 +160,6 @@ local function WC_statsChangeToken(src)
         + (src.totalItemsDeleted or 0)
         + (src.totalRepairs or 0)
         + (src.totalRepairCopper or 0)
-        + (src.totalLootCopper or 0)
         + (src.inventoryWorthCount or 0)
     local counts = src.processCastCounts
     if counts then
@@ -172,135 +170,9 @@ local function WC_statsChangeToken(src)
     return t
 end
 
--- v2.35.x Session + Best Gold/Hour rows. Extracted from RefreshStats
--- (v2.68.1) so the Stats panel's 1Hz tick can refresh ONLY these
--- time-varying rows between real stat changes. Includes the best-record
--- stamping (5-minute gate, all three fields written together) - it must
--- keep running every tick so a record set mid-session is never missed.
---
--- The session line shows the live rate (copper/hour) computed from
--- session.copper / elapsed-seconds, with a 10-second floor on the elapsed
--- value so sub-second extrapolation doesn't produce absurd numbers right
--- after /reload. The best line shows the record + zone + when context.
--- See EbonClearance's docs/specs/2026-05-26-gph-stats-design.md.
--- Session rate + best-record stamp. Returns the session copper/hour, or
--- nil in the first 10 s. Also called by the hub after a vendor run and on
--- looted coin, so a record is kept with the Stats panel closed (it used to
--- be stamped only while a panel repainted).
-function NS.StampBestGPH()
-    local DB, ADB = NS.DB, NS.ADB
-    local startedAt = NS.session.startedAt or 0
-    local elapsed = (startedAt > 0) and (GetTime() - startedAt) or 0
-    -- 10-second floor: a shorter window extrapolates to absurd rates.
-    if not (DB and elapsed >= 10) then
-        return nil
-    end
-    -- v0.7.0: looted coin counts as income too.
-    local sessionGPH = math.floor(((NS.session.copper + (NS.session.lootCopper or 0)) / elapsed) * 3600)
-    -- Best-update gate: 5 minutes of session AND new high. Compared
-    -- against both records independently so a character-best update
-    -- doesn't require an account-best, and vice versa.
-    if elapsed >= 300 then
-        local zone = GetRealZoneText()
-        local zoneText = (zone and zone ~= "") and zone or "Unknown"
-        local nowTime = time()
-        if sessionGPH > (DB.bestGPH or 0) then
-            DB.bestGPH = sessionGPH
-            DB.bestGPHAt = nowTime
-            DB.bestGPHZone = zoneText
-        end
-        -- v2.38.1: account-wide best record. Stamp the character name
-        -- so the Account view's ribbon can say "on <CharName>".
-        local AS = ADB and ADB.accountStats
-        if AS and sessionGPH > (AS.bestGPH or 0) then
-            AS.bestGPH = sessionGPH
-            AS.bestGPHAt = nowTime
-            AS.bestGPHZone = zoneText
-            AS.bestGPHChar = GetUnitName("player", true) or ""
-        end
-    end
-    return sessionGPH
-end
-
-local function WC_RefreshGPHRows(panel, view, src, DB, ADB)
-    local startedAt = NS.session.startedAt or 0
-    local now = GetTime()
-    local elapsed = (startedAt > 0) and (now - startedAt) or 0
-    local function humanDuration(secs)
-        secs = math.floor(secs)
-        if secs < 60 then
-            return string.format("%ds", secs)
-        elseif secs < 3600 then
-            return string.format("%dm %ds", math.floor(secs / 60), secs % 60)
-        end
-        local h = math.floor(secs / 3600)
-        local m = math.floor((secs % 3600) / 60)
-        local s = secs % 60
-        return string.format("%dh %dm %ds", h, m, s)
-    end
-    local sessionGPH = NS.StampBestGPH()
-    if panel.statsSessionGPH then
-        panel.statsSessionGPH.left:SetText(L["Session Gold/Hour"])
-        if sessionGPH then
-            panel.statsSessionGPH.right:SetText(
-                NS.CopperToGoldOnlyText(sessionGPH)
-                    .. string.format("  |cff888888(%s)|r", humanDuration(elapsed))
-            )
-        else
-            panel.statsSessionGPH.right:SetText(L["|cff888888-  (computing...)|r"])
-        end
-    end
-
-    if panel.statsBestGPH then
-        local best = src.bestGPH or 0
-        if best > 0 then
-            local at = src.bestGPHAt or 0
-            local zone = src.bestGPHZone
-            if not zone or zone == "" then
-                zone = L["Unknown"]
-            end
-            local when
-            if at <= 0 then
-                when = L["unknown date"]
-            else
-                local secs = time() - at
-                if secs < 60 then
-                    when = L["just now"]
-                elseif secs < 3600 then
-                    local n = math.floor(secs / 60)
-                    when = string.format(L["%d minute%s ago"], n, n == 1 and "" or "s")
-                elseif secs < 86400 then
-                    local n = math.floor(secs / 3600)
-                    when = string.format(L["%d hour%s ago"], n, n == 1 and "" or "s")
-                elseif secs < 30 * 86400 then
-                    local n = math.floor(secs / 86400)
-                    when = string.format(L["%d day%s ago"], n, n == 1 and "" or "s")
-                else
-                    when = date("%Y-%m-%d", at)
-                end
-            end
-            -- v2.38.1: append the character name in Account view so
-            -- "Best Gold/Hour: 12345g  in Stranglethorn, 2 hours ago on Bob"
-            -- tells the player which character set the account record.
-            local charSuffix = ""
-            if view == "account" and src.bestGPHChar and src.bestGPHChar ~= "" then
-                charSuffix = string.format(L[" on %s"], src.bestGPHChar)
-            end
-            panel.statsBestGPH.left:SetText(L["Best Gold/Hour"])
-            panel.statsBestGPH.right:SetText(
-                NS.CopperToGoldOnlyText(best)
-                    .. string.format(L["  |cff888888in %s, %s%s|r"], zone, when, charSuffix)
-            )
-        else
-            panel.statsBestGPH.left:SetText(L["Best Gold/Hour"])
-            panel.statsBestGPH.right:SetText(L["|cff888888-|r"])
-        end
-    end
-end
-
 -- v0.7.0: the last seven days from ADB.accountStats.daily (written by
--- WC_compCache.bumpDay). Net = sold + looted coin - repairs, then the item
--- counts in grey. Account-wide in both views: the header says so.
+-- WC_compCache.bumpDay). Net = sold - repairs, then the item counts in
+-- grey. Account-wide in both views: the header says so.
 local function WC_RefreshDayRows(panel, ADB)
     if not (panel.statsDays and panel._dayRows) then
         return
@@ -320,15 +192,14 @@ local function WC_RefreshDayRows(panel, ADB)
         local r = daily[date("%Y-%m-%d", t)]
         row.left:SetText(label)
         if r then
-            local net = (r.c or 0) + (r.g or 0) - (r.r or 0)
+            local net = (r.c or 0) - (r.r or 0)
             local text = NS.CopperToGoldOnlyText(math.abs(net))
             row.right:SetText(
                 (net < 0 and ("|cffff4444-|r" .. text) or text)
                     .. string.format(
-                        L["  |cff888888(%s sold, %s deleted, %s looted)|r"],
+                        L["  |cff888888(%s sold, %s deleted)|r"],
                         NS.CommaNumber(r.s or 0),
-                        NS.CommaNumber(r.d or 0),
-                        NS.CommaNumber(r.l or 0)
+                        NS.CommaNumber(r.d or 0)
                     )
             )
         else
@@ -390,24 +261,14 @@ function NS.RefreshStats()
     panel.statsRepairs.right:SetText(num(src.totalRepairs or 0) .. sessionSuffix(NS.session.repairs))
     panel.statsRepairCost.left:SetText(L["Total Repair Cost"])
     panel.statsRepairCost.right:SetText(NS.CopperToGoldOnlyText(src.totalRepairCopper or 0) .. sessionMoneySuffix(NS.session.repairCopper))
-    -- v0.7.0: looted coin and the net line (sold + looted coin - repairs).
-    if panel.statsLootCoin then
-        panel.statsLootCoin.left:SetText(L["Gold Looted"])
-        panel.statsLootCoin.right:SetText(
-            NS.CopperToGoldOnlyText(src.totalLootCopper or 0) .. sessionMoneySuffix(NS.session.lootCopper)
-        )
-    end
+    -- v0.7.0: the net line (sold - repairs).
     if panel.statsNet then
-        local net = (src.totalCopper or 0) + (src.totalLootCopper or 0) - (src.totalRepairCopper or 0)
+        local net = (src.totalCopper or 0) - (src.totalRepairCopper or 0)
         local text = NS.CopperToGoldOnlyText(math.abs(net))
         panel.statsNet.left:SetText(L["Net (after repairs)"])
         panel.statsNet.right:SetText(net < 0 and ("|cffff4444-|r" .. text) or text)
     end
     WC_RefreshDayRows(panel, ADB)
-
-    -- v2.35.x: Session + Best Gold/Hour - body extracted to
-    -- WC_RefreshGPHRows (v2.68.1) so the 1Hz tick can run it alone.
-    WC_RefreshGPHRows(panel, view, src, DB, ADB)
 
     if panel.statsAvgWorth then
         -- inventoryWorthTotal / inventoryWorthCount are per-character
@@ -519,7 +380,7 @@ function NS.RefreshStats()
 
     -- v2.66.1 iter (Serv report): Top 5 lists now render via per-row
     -- MakeStatRow containers so the count column aligns at a fixed X -
-    -- matches Stats - Guild / Stats - Server. Header widget still lives
+    -- lines up the columns. Header widget still lives
     -- on panel.statsMostSold / panel.statsMostDeleted (name preserved
     -- as a contract surface); the actual data rows live on
     -- panel._mostSoldRows / panel._mostDeletedRows (built in
@@ -630,50 +491,6 @@ function NS.RefreshStats()
         end
     end
 
-    -- v2.66.1 iter (Serv report): Top Zones now header + per-zone
-    -- MakeStatRow so the gold column aligns at a fixed X.
-    if panel.statsTopZones then
-        panel.statsTopZones:SetText(L["|cffffd200Top Zones (gold earned)|r"])
-    end
-    if panel._topZoneRows and panel._topZoneEmpty then
-        local zones = src.copperByZone or {}
-        local entries = {}
-        for name, copper in pairs(zones) do
-            if type(name) == "string" and type(copper) == "number" and copper > 0 then
-                entries[#entries + 1] = { name = name, copper = copper }
-            end
-        end
-        table.sort(entries, function(a, b)
-            if a.copper == b.copper then
-                return a.name < b.name
-            end
-            return a.copper > b.copper
-        end)
-        local cap = math.min(#entries, 5)
-        for i = 1, 5 do
-            local row = panel._topZoneRows[i]
-            local e = (i <= cap) and entries[i] or nil
-            if row then
-                if e then
-                    row.left:SetText(string.format("  %d. %s", i, e.name))
-                    row.right:SetText(NS.CopperToGoldOnlyText(e.copper))
-                    row:Show()
-                else
-                    row.left:SetText("")
-                    row.right:SetText("")
-                    row:Hide()
-                end
-            end
-        end
-        if #entries == 0 then
-            panel._topZoneEmpty.left:SetText(L["  |cff888888No zones tracked yet.|r"])
-            panel._topZoneEmpty.right:SetText("")
-            panel._topZoneEmpty:Show()
-        else
-            panel._topZoneEmpty:Hide()
-        end
-    end
-
     -- v2.66.1 iter 4 (Serv report): dynamic gap closure. Each section
     -- header re-anchors at refresh time to the LAST VISIBLE row of the
     -- previous section, rather than staying pinned to row N of a fixed
@@ -737,24 +554,11 @@ function NS.RefreshStats()
             -10
         )
     end
-    if panel.statsTopZones then
-        reanchor(
-            panel.statsTopZones,
-            -- v2.68.1: emptyRow arg is nil - the always-hidden _processEmpty
-            -- widget was removed; the header fallback covers the (unreachable
-            -- since v2.66.1) all-rows-hidden case identically.
-            lastVisibleRow(panel._processRows, panel.statsProcessTotals, nil, 1, 4),
-            -10
-        )
-    end
-    -- v0.7.0: the day rows follow Top Zones; all seven always show, so
-    -- the footnote anchors to the seventh.
+    -- v0.7.0: the day rows follow the process rows; all seven always show,
+    -- so the footnote anchors to the seventh. emptyRow arg is nil - the
+    -- always-hidden _processEmpty widget was removed (v2.68.1).
     if panel.statsDays then
-        reanchor(
-            panel.statsDays,
-            lastVisibleRow(panel._topZoneRows, panel.statsTopZones, panel._topZoneEmpty, 1, 5),
-            -10
-        )
+        reanchor(panel.statsDays, lastVisibleRow(panel._processRows, panel.statsProcessTotals, nil, 1, 4), -10)
     end
     if panel.statsNote and panel._dayRows then
         reanchor(panel.statsNote, panel._dayRows[7], -4)
@@ -767,8 +571,9 @@ function NS.RefreshStats()
 end
 
 -- v2.68.1: the Stats panel's 1Hz driver. Full repaint ONLY when a rendered
--- counter changed (or the view flipped under us); otherwise just the
--- time-varying Gold/Hour rows. Direct NS.RefreshStats callers (view
+-- counter changed (or the view flipped under us). The day rows only move
+-- with those counters now that looted coin is not in them. Direct
+-- NS.RefreshStats callers (view
 -- toggles, resets, OnShow) are unaffected - they re-stamp the token.
 function NS.RefreshStatsTick()
     local panel = _G["WoWClearanceOptionsStats"]
@@ -787,18 +592,15 @@ function NS.RefreshStatsTick()
     end
     if view ~= panel._statsTokenView or WC_statsChangeToken(src) ~= panel._statsToken then
         NS.RefreshStats()
-    else
-        WC_RefreshGPHRows(panel, view, src, DB, ADB)
-        -- Seven rows; loot counts move them without changing the token.
-        WC_RefreshDayRows(panel, ADB)
     end
 end
 
 -- v2.38.1: view-aware Reset Lifetime. Character view clears this
 -- character's DB.* lifetime totals (existing behaviour). Account view
 -- clears the ADB.accountStats.* aggregate (every character's
--- contribution since v2.38.1 install). Both wipe the Best GPH triple
--- on their respective side.
+-- contribution since v2.38.1 install). Both also wipe the Loot module's
+-- lifetime totals (looted coin, zones, Best GPH): they live in the same
+-- saved data, and a lifetime reset means all of it.
 function NS.ResetLifetimeStats()
     local panel = _G["WoWClearanceOptionsStats"]
     local view = (panel and panel._statsView) or "character"
@@ -884,6 +686,17 @@ function NS.ResetLifetimeStats()
     DB.bestGPHZone = ""
 end
 
+
+local WC_LOOT_MODULE = "WoWClearance_Loot"
+StaticPopupDialogs["WC_RELOAD_FOR_MODULE"] = {
+    text = L["Reload the interface now to apply the change?"],
+    button1 = L["Reload"],
+    button2 = L["Later"],
+    OnAccept = ReloadUI,
+    timeout = 0,
+    whileDead = true,
+    hideOnEscape = true,
+}
 
 local function BuildMainPanel(panel, content)
     -- v2.12.0: widgets are created on `content` (the scroll-frame child)
@@ -1037,32 +850,44 @@ local function BuildMainPanel(panel, content)
     WC_compCache.setPanelWidth(historyHint, 180)
     historyHint:SetText(L["|cff888888What was sold or deleted on this character, and why. Saved between sessions.|r"])
 
-    -- Loot Log button. Same opener as the Stats - Personal panel's button
-    -- (NS.ToggleLootWindow, also reachable via /wc loot); placed here so
-    -- the two session windows (Sold History + Loot Log) sit together.
-    local lootLogBtn = CreateFrame("Button", nil, content, "UIPanelButtonTemplate")
-    lootLogBtn:SetSize(140, 26)
-    lootLogBtn:SetPoint("TOPLEFT", historyBtn, "BOTTOMLEFT", 0, -8)
-    lootLogBtn:SetText(L["Loot Log"])
-    lootLogBtn:SetScript("OnClick", function()
-        if NS.ToggleLootWindow then
-            NS.ToggleLootWindow()
+    -- Modules (v0.9.0). WoWClearance_Loot ships in the same zip as a
+    -- separate addon, like DaylightUI's modules: the Loot Log, coin looted,
+    -- gold per hour and top zones. This box is the same switch as the game's
+    -- AddOn list (all characters) and takes effect on reload. Hidden when
+    -- the module is not installed.
+    local lootModuleCB
+    if C_AddOns.DoesAddOnExist(WC_LOOT_MODULE) then
+        lootModuleCB = NS.AddCheckbox(
+            content,
+            "WoWClearanceLootModuleCB",
+            historyBtn,
+            L["Loot module: Loot Log, gold looted and gold per hour"],
+            function()
+                return C_AddOns.GetAddOnEnableState(WC_LOOT_MODULE, UnitName("player")) > Enum.AddOnEnableState.None
+            end,
+            function(v)
+                if v then
+                    C_AddOns.EnableAddOn(WC_LOOT_MODULE)
+                else
+                    C_AddOns.DisableAddOn(WC_LOOT_MODULE)
+                end
+                local dialog = StaticPopup_Show("WC_RELOAD_FOR_MODULE")
+                if NS.RaisePopupAboveOptions then
+                    NS.RaisePopupAboveOptions(dialog)
+                end
+            end,
+            -10
+        )
+        local t = _G[lootModuleCB:GetName() .. "Text"]
+        if t then
+            NS.AddHelpIcon(content, t, "LEFT", "RIGHT", 6, 0, "loot-module")
         end
-        PlaySound(SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON)
-    end)
-    local lootLogHint = content:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
-    lootLogHint:SetPoint("LEFT", lootLogBtn, "RIGHT", 10, 0)
-    lootLogHint:SetJustifyH("LEFT")
-    if lootLogHint.SetWordWrap then
-        lootLogHint:SetWordWrap(true)
     end
-    WC_compCache.setPanelWidth(lootLogHint, 180)
-    lootLogHint:SetText(L["|cff888888Everything looted this session, plus your account-wide totals.|r"])
 
     -- Tip on its own line, in grey, so it reads as a hint rather than
     -- another sentence in the main description block.
     local mainTip = content:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
-    mainTip:SetPoint("TOPLEFT", lootLogBtn, "BOTTOMLEFT", 0, -14)
+    mainTip:SetPoint("TOPLEFT", lootModuleCB or historyBtn, "BOTTOMLEFT", 0, -14)
     WC_compCache.setPanelWidth(mainTip, 16)
     mainTip:SetJustifyH("LEFT")
     mainTip:SetJustifyV("TOP")

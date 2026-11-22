@@ -5,7 +5,7 @@
 --
 -- v2.57.0. Replaces the old copy-only /wc history text dump with a movable,
 -- resizable window (modelled on the Loot Log window in
--- WoWClearance_StatsPanel.lua) that shows the WHOLE session's sell/delete
+-- WoWClearance_Loot/WoWClearance_LootWindow.lua) that shows the WHOLE session's sell/delete
 -- actions, newest-first, with All / Sold / Deleted filters, a rarity filter
 -- (v2.68.0) and a search box. The three narrow the same list together.
 -- Backed by the full-session logs in WoWClearance_Events.lua

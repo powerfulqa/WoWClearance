@@ -1,0 +1,16 @@
+## Interface: 16001
+## Title: |cff66ccffWoWClearance|r Loot
+## Notes: Optional module for WoWClearance: the Loot Log, coin looted, gold per hour, your best farming zones and Stats - Guild.
+## Author: Serv
+## Category: Inventory
+## X-Website: https://github.com/powerfulqa/WoWClearance
+## Version: v0.8.7
+## Dependencies: WoWClearance
+## IconTexture: Interface\Icons\INV_Misc_Coin_01
+
+WoWClearance_LootCapture.lua
+WoWClearance_LootHistory.lua
+WoWClearance_LootWindow.lua
+WoWClearance_LootPanel.lua
+WoWClearance_GuildShare.lua
+WoWClearance_GuildPanel.lua

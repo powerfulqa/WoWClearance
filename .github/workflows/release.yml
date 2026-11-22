@@ -40,6 +40,8 @@ jobs:
           sed -i "s/@VERSION@/$VERSION/g" WoWClearance.toc
           sed -i "s/\[v[0-9]*\.[0-9]*\.[0-9]*\]/[$VERSION]/g" WoWClearance.toc
           sed -i "s/^## Version: .*/## Version: $VERSION/" WoWClearance.toc
+          # v0.9.0: the optional Loot module ships beside it at the same version.
+          sed -i "s/^## Version: .*/## Version: $VERSION/" WoWClearance_Loot/WoWClearance_Loot.toc
 
       - name: Install Lua 5.1
         # Retry: the apt mirror occasionally returns exit 100 (a transient
@@ -61,7 +63,7 @@ jobs:
         # Luacheck is not re-run here: master CI gates it on every push, so a
         # tag cut from green master is already luacheck-clean.
         run: |
-          for f in WoWClearance*.lua; do luac5.1 -p "$f"; done
+          for f in WoWClearance*.lua WoWClearance_Loot/*.lua; do luac5.1 -p "$f"; done
           lua5.1 tests/run_all.lua
 
       - name: Package addon
@@ -82,13 +84,20 @@ jobs:
           # copies anything.
           cp WoWClearance*.lua WoWClearance.toc Bindings.xml LICENSE AGENTS.md WoWClearance/
           test -s WoWClearance/LICENSE && test -s WoWClearance/AGENTS.md
+          # v0.9.0: the optional Loot module is a second addon folder in the
+          # same zip (the game loads only top-level AddOns folders, so it
+          # cannot nest inside WoWClearance/). It carries the licence too.
+          mkdir -p pkg_loot/WoWClearance_Loot
+          cp WoWClearance_Loot/*.lua WoWClearance_Loot/WoWClearance_Loot.toc LICENSE AGENTS.md pkg_loot/WoWClearance_Loot/
+          test -s pkg_loot/WoWClearance_Loot/WoWClearance_Loot.toc
           zip -r WoWClearance.zip WoWClearance/
+          (cd pkg_loot && zip -r ../WoWClearance.zip WoWClearance_Loot/)
 
       - name: Commit version update back to repo
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add WoWClearance.toc
+          git add WoWClearance.toc WoWClearance_Loot/WoWClearance_Loot.toc
           git commit -m "Update version to ${RELEASE_VERSION} [skip ci]" || echo "No changes to commit"
           git push origin master
 

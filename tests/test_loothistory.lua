@@ -1,5 +1,5 @@
 #!/usr/bin/env lua
--- Runtime tests for the per-pickup loot history (WoWClearance_LootHistory.lua).
+-- Runtime tests for the per-pickup loot history (WoWClearance_Loot/WoWClearance_LootHistory.lua).
 -- Run: lua tests/test_loothistory.lua
 -- Loads the chunk in isolation with stub globals and drives the parser, the
 -- ring buffer and the CHAT_MSG_LOOT handler directly.
@@ -23,7 +23,8 @@ local NS = { ADB = {}, compCache = {} }
 assert(loadfile("WoWClearance_Kit.lua"))("WoWClearance", NS) -- NS.Kit, loaded first as in the .toc
 assert(loadfile("WoWClearance_Core.lua"))("WoWClearance", NS) -- NS.CanRead
 NS.ADB, NS.compCache = {}, {}
-assert(loadfile("WoWClearance_LootHistory.lua"))("WoWClearance", NS)
+-- The Loot module reads the core namespace from its own table (.core).
+assert(loadfile("WoWClearance_Loot/WoWClearance_LootHistory.lua"))("WoWClearance_Loot", { core = NS })
 local LH = NS.LootHistory
 
 local fails = 0
@@ -56,12 +57,17 @@ eq("positional: qty", n, 2)
 
 -- Event handler: group member logged with own realm appended; own name and
 -- unreadable (secret) payloads skipped.
--- The event is registered on the hub's single frame and routed here.
-local fh = assert(io.open("WoWClearance_Events.lua", "r"))
+-- The event is registered on the Loot module's frame and routed here; the
+-- core hub no longer handles loot events (v0.9.0).
+local fh = assert(io.open("WoWClearance_Loot/WoWClearance_LootCapture.lua", "r"))
 local ev = fh:read("*a")
 fh:close()
-ok("hub registers CHAT_MSG_LOOT", ev:find('f:RegisterEvent("CHAT_MSG_LOOT")', 1, true) ~= nil)
-ok("hub routes CHAT_MSG_LOOT to LootHistory", ev:find("NS.LootHistory.OnChatMsgLoot(...)", 1, true) ~= nil)
+fh = assert(io.open("WoWClearance_Events.lua", "r"))
+local hub = fh:read("*a")
+fh:close()
+ok("loot module registers CHAT_MSG_LOOT", ev:find('f:RegisterEvent("CHAT_MSG_LOOT")', 1, true) ~= nil)
+ok("loot module routes CHAT_MSG_LOOT to LootHistory", ev:find("NS.LootHistory.OnChatMsgLoot(...)", 1, true) ~= nil)
+ok("core hub no longer registers CHAT_MSG_LOOT", hub:find('RegisterEvent("CHAT_MSG_LOOT")', 1, true) == nil)
 local function handler(_, _, text, sender) LH.OnChatMsgLoot(text, sender) end
 local function newest()
     if LH.Count() == 0 then return nil end

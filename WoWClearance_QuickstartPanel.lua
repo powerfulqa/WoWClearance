@@ -139,14 +139,6 @@ local ANSWER_MAP = {
             DB.turboMode = true
         end,
     },
-    fastLoot = {
-        on = function(DB)
-            DB.fastLoot = true
-        end,
-        off = function(DB)
-            DB.fastLoot = false
-        end,
-    },
     autoOpen = {
         on = function(DB)
             DB.autoOpenContainers = true
@@ -340,23 +332,6 @@ local ANSWER_MAP = {
         bags = function(DB)
             DB.itemHighlighting = true -- the master switch would hide it
             DB.itemLevelOverlay.enabled = true
-            DB.itemLevelOverlay.bags = true
-            DB.itemLevelOverlay.paperdoll = false
-            DB.itemLevelOverlay.merchant = false
-        end,
-        bagsPaperdoll = function(DB)
-            DB.itemHighlighting = true
-            DB.itemLevelOverlay.enabled = true
-            DB.itemLevelOverlay.bags = true
-            DB.itemLevelOverlay.paperdoll = true
-            DB.itemLevelOverlay.merchant = false
-        end,
-        everywhere = function(DB)
-            DB.itemHighlighting = true
-            DB.itemLevelOverlay.enabled = true
-            DB.itemLevelOverlay.bags = true
-            DB.itemLevelOverlay.paperdoll = true
-            DB.itemLevelOverlay.merchant = true
         end,
     },
     borders = {
@@ -381,7 +356,6 @@ local PRESETS = {
         desc = L["Auto-sells outgrown gear. Protects what you're wearing. Sensible defaults for most players."],
         answers = {
             speed = "normal",
-            fastLoot = "on",
             autoOpen = "on",
             autoSell = "commonUncommon",
             ilvlMode = "dynamic",
@@ -403,7 +377,6 @@ local PRESETS = {
         desc = L["Same auto-sell as Recommended, plus protects items that might upgrade you, items in your gear sets and every recipe. Delete Next is off."],
         answers = {
             speed = "normal",
-            fastLoot = "on",
             autoOpen = "on",
             autoSell = "commonUncommon",
             ilvlMode = "dynamic",
@@ -425,7 +398,6 @@ local PRESETS = {
         desc = L["Fast vendoring, sells Rares too (BoE only - quest gear stays). Closes bags after."],
         answers = {
             speed = "fast",
-            fastLoot = "on",
             autoOpen = "on",
             autoSell = "upToRares",
             ilvlMode = "dynamic",
@@ -438,16 +410,15 @@ local PRESETS = {
             keepBags = "no",
             delete = "yes",
             greyDelete = "no",
-            ilvlSurfaces = "bagsPaperdoll",
+            ilvlSurfaces = "bags",
             borders = "on",
         },
     },
     power = {
         name = L["Power"],
-        desc = L["Turbo vendoring, sells known recipes too, item levels everywhere. Read the disconnect warning."],
+        desc = L["Turbo vendoring, sells known recipes too. Read the disconnect warning."],
         answers = {
             speed = "turbo",
-            fastLoot = "on",
             autoOpen = "on",
             autoSell = "upToRares",
             ilvlMode = "dynamic",
@@ -460,7 +431,7 @@ local PRESETS = {
             keepBags = "no",
             delete = "yes",
             greyDelete = "no",
-            ilvlSurfaces = "everywhere",
+            ilvlSurfaces = "bags",
             borders = "on",
         },
     },
@@ -609,8 +580,7 @@ local function snapshotAnswersFromDB(DB)
     else
         a.speed = "normal"
     end
-    -- Q2-3 cycle toggles
-    a.fastLoot = DB.fastLoot and "on" or "off"
+    -- Q3 cycle toggle
     a.autoOpen = DB.autoOpenContainers and "on" or "off"
     -- Q4 auto-sell - infer from which qualityRules are enabled
     local r1 = DB.qualityRules and DB.qualityRules[1] and DB.qualityRules[1].enabled
@@ -683,10 +653,6 @@ local function snapshotAnswersFromDB(DB)
     local ilo = DB.itemLevelOverlay
     if not (ilo and ilo.enabled) or DB.itemHighlighting == false then
         a.ilvlSurfaces = "none"
-    elseif ilo.merchant then
-        a.ilvlSurfaces = "everywhere"
-    elseif ilo.paperdoll then
-        a.ilvlSurfaces = "bagsPaperdoll"
     else
         a.ilvlSurfaces = "bags"
     end
@@ -931,19 +897,7 @@ local function buildPanel(self, content)
         -- The question numbering deliberately keeps its gaps (Q1, Q3, Q4...)
         -- rather than renumbering as questions are removed, so bug reports
         -- and Help references stay comparable across versions. Q2 asked about
-        -- the Scavenger auto-loot cycle and went with that companion.
-
-        lastAnchor = makeRadioGroup(
-            content,
-            lastAnchor,
-            "fastLoot",
-            L["Q2. Fast Loot (single-click clears loot windows)?"],
-            {
-                { value = "on", label = L["Yes"] },
-                { value = "off", label = L["No"] },
-            },
-            refresh
-        )
+        -- Fast Loot, removed in v0.9.0.
 
         lastAnchor = makeRadioGroup(
             content,
@@ -1236,11 +1190,9 @@ local function buildPanel(self, content)
 
         local sec5 = makeSectionHeader(content, L["Section 5: Visual Helpers"], lastAnchor, -20)
 
-        lastAnchor = makeRadioGroup(content, sec5, "ilvlSurfaces", L["Q10. Show item levels on equipment slots?"], {
-            { value = "none", label = L["Don't show item levels"] },
-            { value = "bags", label = L["On bag slots only"] },
-            { value = "bagsPaperdoll", label = L["Bag slots + character sheet / inspect"] },
-            { value = "everywhere", label = L["Bag slots + character sheet + merchant window"] },
+        lastAnchor = makeRadioGroup(content, sec5, "ilvlSurfaces", L["Q10. Show item levels on bag slots?"], {
+            { value = "none", label = L["No"] },
+            { value = "bags", label = L["Yes"] },
         }, refresh)
 
         lastAnchor = makeRadioGroup(

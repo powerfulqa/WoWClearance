@@ -1019,13 +1019,10 @@ end
 -- v2.37.0 (Borrow C): item-level text overlay
 -- ===========================================================================
 -- Quality-coloured "N" text in the bottom-right corner of slot buttons
--- holding equippable gear. Three surfaces, each independently toggled
--- by Item Highlighting: bags (container + bank), paperdoll (character
--- sheet + inspect), merchant (vendor + buyback). The equipLoc
--- whitelist filters consumables / quest items / non-gear so the text
--- only appears where iLvl is meaningful. Master toggle defaults OFF;
--- when first enabled, bags seeds ON and the other two surfaces stay
--- OFF until the player ticks them. See
+-- holding equippable gear, on bag slots (container + bank) only; the
+-- character sheet, inspect and vendor surfaces were removed in v0.9.0.
+-- The equipLoc whitelist filters consumables / quest items / non-gear so
+-- the text only appears where iLvl is meaningful. Defaults OFF. See
 -- EbonClearance's docs/specs/2026-05-28-keep-highlighting-design.md (Borrow C).
 
 local WC_ITEM_LEVEL_EQUIP_LOCS = {
@@ -1137,24 +1134,20 @@ function WC_compCache.getGearQualityRGB(itemLink, fallbackQuality)
     return 1, 1, 1
 end
 
-local function WC_itemLevelSurfaceEnabled(surface)
+local function WC_itemLevelSurfaceEnabled()
     local DB = NS.DB
-    if not (DB and DB.itemHighlighting ~= false and DB.itemLevelOverlay and DB.itemLevelOverlay.enabled) then
-        return false
-    end
-    return DB.itemLevelOverlay[surface] and true or false
+    return (DB and DB.itemHighlighting ~= false and DB.itemLevelOverlay and DB.itemLevelOverlay.enabled) and true or false
 end
 
-function WC_compCache.applyItemLevelOverlay(button, itemLink, fallbackQuality, surface)
+function WC_compCache.applyItemLevelOverlay(button, itemLink, fallbackQuality)
     if not button then
         return
     end
-    button._wc_iLvlSurface = surface
     local fs = WC_ensureItemLevelText(button)
     if not fs then
         return
     end
-    if not WC_itemLevelSurfaceEnabled(surface) then
+    if not WC_itemLevelSurfaceEnabled() then
         fs:Hide()
         return
     end
@@ -1176,7 +1169,7 @@ local function WC_applyContainerItemLevel(frame)
     -- through NS.RefreshItemLevelOverlay (Item Highlighting panel toggles),
     -- which hides already-painted numbers - so when disabled this hook can
     -- skip the walk entirely, mirroring the sell-border hook's early bail.
-    if not WC_itemLevelSurfaceEnabled("bags") then
+    if not WC_itemLevelSurfaceEnabled() then
         return
     end
     if not (frame and frame.size) then
@@ -1196,7 +1189,7 @@ local function WC_applyContainerItemLevel(frame)
             local link = GetContainerItemLink(bag, slot)
             local cInfo = C_Container.GetContainerItemInfo(bag, slot)
             local q = cInfo and cInfo.quality
-            WC_compCache.applyItemLevelOverlay(button, link, q, "bags")
+            WC_compCache.applyItemLevelOverlay(button, link, q)
         end
     end
 end
@@ -1212,7 +1205,7 @@ if _G.ContainerFrame_Update then
     hooksecurefunc("ContainerFrame_Update", WC_applyContainerItemLevel)
 else
     function WC_compCache.applyContainerItemLevelForever(frame)
-        if not WC_itemLevelSurfaceEnabled("bags") then
+        if not WC_itemLevelSurfaceEnabled() then
             return
         end
         if not (frame and frame.EnumerateItems) then
@@ -1224,7 +1217,7 @@ else
                 if bag and slot then
                     local link = GetContainerItemLink(bag, slot)
                     local cInfo = C_Container.GetContainerItemInfo(bag, slot)
-                    WC_compCache.applyItemLevelOverlay(button, link, cInfo and cInfo.quality, "bags")
+                    WC_compCache.applyItemLevelOverlay(button, link, cInfo and cInfo.quality)
                 end
             end
         end
@@ -1236,10 +1229,9 @@ end
 -- two host patterns (legacy AceAddon-3.0 host with ItemSlot class;
 -- engine-table-exposure host with Bags module), same idempotent
 -- install flags, same one-shot repaint of already-visible bag frames.
--- Without this, players running with a host bag UI installed see iLvl
--- text only on character sheet + merchant; the bags surface paints
--- nothing because the default ContainerFrame_Update hook never fires
--- (the host replaced the underlying bag display).
+-- Without this, players running with a host bag UI installed see no iLvl
+-- text, because the default ContainerFrame_Update hook never fires (the
+-- host replaced the underlying bag display).
 function WC_compCache.installHostBagItemLevelHook()
     local apply = WC_compCache.applyItemLevelOverlay
 
@@ -1277,7 +1269,7 @@ function WC_compCache.installHostBagItemLevelHook()
             end
             local cInfo = C_Container.GetContainerItemInfo(bag, id)
             local q = cInfo and cInfo.quality
-            apply(slot, link, q, "bags")
+            apply(slot, link, q)
         end
         hooksecurefunc(ItemSlot, "Update", refresh)
         if ItemSlot.UpdateBorder then
@@ -1324,7 +1316,7 @@ function WC_compCache.installHostBagItemLevelHook()
             local link = GetContainerItemLink(bagID, slotID)
             local cInfo = C_Container.GetContainerItemInfo(bagID, slotID)
             local q = cInfo and cInfo.quality
-            apply(slotButton, link, q, "bags")
+            apply(slotButton, link, q)
         end)
         WC_compCache._engineBagItemLevelHookInstalled = true
         if B.UpdateAllBagSlots then
@@ -1335,89 +1327,6 @@ function WC_compCache.installHostBagItemLevelHook()
     tryLegacyHost()
     tryEngineHost()
 end
-
-local function WC_applyPaperDollItemLevel(button)
-    if not button then
-        return
-    end
-    local slotID = button:GetID()
-    if not slotID or slotID == 0 then
-        return
-    end
-    local link = GetInventoryItemLink("player", slotID)
-    -- v2.37.x audit fix: GetInventoryItemQuality doesn't exist in
-    -- 3.3.5a (Cataclysm+ API), so the previous defensive call always
-    -- short-circuited to nil. Derive quality from the link instead;
-    -- getGearQualityRGB does the same fallback internally but reading
-    -- it once here keeps the call uniform with the bags surface.
-    local quality = link and select(3, GetItemInfo(link)) or nil
-    WC_compCache.applyItemLevelOverlay(button, link, quality, "paperdoll")
-end
-if _G.PaperDollItemSlotButton_Update then
-    hooksecurefunc("PaperDollItemSlotButton_Update", WC_applyPaperDollItemLevel)
-end
-
-local function WC_applyInspectItemLevel(button)
-    if not button then
-        return
-    end
-    local slotID = button:GetID()
-    if not slotID or slotID == 0 then
-        return
-    end
-    local unit = (InspectFrame and InspectFrame.unit) or (UnitExists("target") and "target") or nil
-    if not unit then
-        return
-    end
-    local link = GetInventoryItemLink(unit, slotID)
-    -- v2.37.x audit fix: same as the paperdoll path above - derive
-    -- quality from the link rather than via the Cataclysm-only API.
-    local quality = link and select(3, GetItemInfo(link)) or nil
-    WC_compCache.applyItemLevelOverlay(button, link, quality, "paperdoll")
-end
--- The inspect UI is load-on-demand, so this global is nil at file load.
--- The hub calls this again when Blizzard_InspectUI loads.
-function WC_compCache.installInspectItemLevelHook()
-    if WC_compCache.inspectItemLevelHooked or not _G.InspectPaperDollItemSlotButton_Update then
-        return
-    end
-    WC_compCache.inspectItemLevelHooked = true
-    hooksecurefunc("InspectPaperDollItemSlotButton_Update", WC_applyInspectItemLevel)
-end
-WC_compCache.installInspectItemLevelHook()
-
-local function WC_applyMerchantItemLevel()
-    if not (MerchantFrame and MerchantFrame:IsShown()) then
-        return
-    end
-    local page = MerchantFrame.page or 1
-    local isBuyback = MerchantFrame.selectedTab == 2
-    local perPage = isBuyback and (BUYBACK_ITEMS_PER_PAGE or 12) or (MERCHANT_ITEMS_PER_PAGE or 10)
-    for index = 1, perPage do
-        local button = _G["MerchantItem" .. index .. "ItemButton"]
-        if button then
-            local itemIndex = ((page - 1) * perPage) + index
-            local link
-            if isBuyback and GetBuybackItemLink then
-                -- Buyback has no pages (MerchantFrame.lua buyback loop).
-                link = GetBuybackItemLink(index)
-            elseif GetMerchantItemLink then
-                link = GetMerchantItemLink(itemIndex)
-            end
-            WC_compCache.applyItemLevelOverlay(button, link, nil, "merchant")
-        end
-    end
-end
-if _G.MerchantFrame_Update then
-    hooksecurefunc("MerchantFrame_Update", WC_applyMerchantItemLevel)
-end
-
-local WC_PAPERDOLL_SLOTS = {
-    "HeadSlot", "NeckSlot", "ShoulderSlot", "BackSlot", "ChestSlot",
-    "WristSlot", "HandsSlot", "WaistSlot", "LegsSlot", "FeetSlot",
-    "Finger0Slot", "Finger1Slot", "Trinket0Slot", "Trinket1Slot",
-    "MainHandSlot", "SecondaryHandSlot", "RangedSlot",
-}
 
 -- v2.37.0 polish: per-button repaint helper for the bags surface.
 -- Used by NS.RefreshItemLevelOverlay to re-paint every bag slot in the
@@ -1440,16 +1349,14 @@ local function WC_repaintBagButton(button)
         local link = GetContainerItemLink(bag, slot)
         local cInfo = C_Container.GetContainerItemInfo(bag, slot)
         local q = cInfo and cInfo.quality
-        WC_compCache.applyItemLevelOverlay(button, link, q, "bags")
+        WC_compCache.applyItemLevelOverlay(button, link, q)
     end
 end
 
 -- v2.37.0 (Borrow C): repaint every registered button. Called from the
 -- Item Highlighting panel toggles so changes take effect immediately
--- without waiting for the next BAG_UPDATE / paperdoll event. Iterates
--- the weak-keyed registry to clear stale text on disabled surfaces,
--- then re-fires the per-surface walker for whichever surfaces are
--- currently enabled.
+-- without waiting for the next BAG_UPDATE. Hides every number when the
+-- overlay is off, otherwise repaints every registered bag button.
 NS.RefreshItemLevelOverlay = function()
     -- Re-apply the font first so a slider change rewrites the size on
     -- every existing FontString (including ones that won't be repainted
@@ -1458,12 +1365,11 @@ NS.RefreshItemLevelOverlay = function()
     for _, fs in pairs(WC_compCache.itemLevelTexts) do
         WC_applyItemLevelFont(fs)
     end
-    for button, fs in pairs(WC_compCache.itemLevelTexts) do
-        if fs and not WC_itemLevelSurfaceEnabled(button._wc_iLvlSurface or "bags") then
+    if not WC_itemLevelSurfaceEnabled() then
+        for _, fs in pairs(WC_compCache.itemLevelTexts) do
             fs:Hide()
         end
-    end
-    if WC_itemLevelSurfaceEnabled("bags") then
+    else
         -- Walk the standard ContainerFrame stack first (covers slots
         -- visible under the default Blizzard bag UI).
         for i = 1, (NUM_CONTAINER_FRAMES or 13) do
@@ -1477,23 +1383,8 @@ NS.RefreshItemLevelOverlay = function()
         -- whose host doesn't re-fire its per-slot Update on a settings
         -- toggle (broad-repaint methods skip slots with unchanged data).
         for button in pairs(WC_compCache.itemLevelTexts) do
-            if button._wc_iLvlSurface == "bags" then
-                WC_repaintBagButton(button)
-            end
+            WC_repaintBagButton(button)
         end
-    end
-    if WC_itemLevelSurfaceEnabled("paperdoll") then
-        if CharacterFrame and CharacterFrame:IsShown() then
-            for _, slotName in ipairs(WC_PAPERDOLL_SLOTS) do
-                local button = _G["Character" .. slotName]
-                if button then
-                    WC_applyPaperDollItemLevel(button)
-                end
-            end
-        end
-    end
-    if WC_itemLevelSurfaceEnabled("merchant") then
-        WC_applyMerchantItemLevel()
     end
     -- v2.37.0 polish: nudge the host bag-UI frameworks to repaint so a
     -- player who just ticked the "On bags" sub-toggle doesn't have to
@@ -1502,7 +1393,7 @@ NS.RefreshItemLevelOverlay = function()
     -- intercepts) only fires when the host decides to refresh - usually
     -- on bag-open / inventory-change events. Calling the host's
     -- broad-repaint method here forces a refresh now.
-    if WC_itemLevelSurfaceEnabled("bags") then
+    if WC_itemLevelSurfaceEnabled() then
         local LibStub = _G.LibStub
         if LibStub then
             local ok, ace = pcall(LibStub, "AceAddon-3.0", true)
@@ -1987,7 +1878,7 @@ function WC_compCache.printSellabilityTrace(bag, slot)
         verdictColor = "|cffffea80"
     end
     local playerName = GetUnitName("player", true) or "?"
-    local realm = GetRealmName() or "?"
+    local realm = NS.RealmName() or "?"
     local timestamp = date("%Y-%m-%d %H:%M:%S")
 
     local lines = {}

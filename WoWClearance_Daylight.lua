@@ -92,7 +92,7 @@ if DUI.RegisterPlugin and DUI.RegisterModule then
                                 label = L["Open"],
                                 items = {
                                     { type = "button", label = L["WoWClearance settings"], func = openPanel("WoWClearanceOptionsMain") },
-                                    { type = "button", label = L["Loot Log"], func = function() if NS.ToggleLootWindow then NS.ToggleLootWindow() end end },
+                                    { type = "button", label = L["Loot Log"], func = function() WoWClearance_ToggleLootLog() end },
                                     { type = "button", label = L["Sold History"], func = function() if NS.ShowSessionHistory then NS.ShowSessionHistory() end end },
                                 },
                             },
@@ -138,9 +138,7 @@ local function makeDataText()
         icon = "Interface\\Icons\\INV_Misc_Coin_01",
         OnClick = function(_, button)
             if button == "RightButton" then
-                if NS.ToggleLootWindow then
-                    NS.ToggleLootWindow()
-                end
+                WoWClearance_ToggleLootLog()
             elseif NS.OpenOptionsPanel then
                 NS.OpenOptionsPanel("WoWClearanceOptionsMain")
             end
@@ -151,8 +149,13 @@ local function makeDataText()
             tip:AddDoubleLine(L["Vendored"], money(ses.copper), 1, 1, 1, 1, 1, 1)
             tip:AddDoubleLine(L["Items sold"], tostring(ses.sold or 0), 1, 1, 1, 1, 1, 1)
             tip:AddDoubleLine(L["Items deleted"], tostring(ses.deleted or 0), 1, 1, 1, 1, 1, 1)
-            tip:AddDoubleLine(L["Gold looted"], money(ses.lootCopper), 1, 1, 1, 1, 1, 1)
-            tip:AddLine(L["Click: settings. Right-click: Loot Log."], 0.6, 0.6, 0.6)
+            -- Looted coin comes from the optional Loot module.
+            if ses.lootCopper then
+                tip:AddDoubleLine(L["Gold looted"], money(ses.lootCopper), 1, 1, 1, 1, 1, 1)
+                tip:AddLine(L["Click: settings. Right-click: Loot Log."], 0.6, 0.6, 0.6)
+            else
+                tip:AddLine(L["Click: settings."], 0.6, 0.6, 0.6)
+            end
         end,
     })
     -- A broker display redraws on each change; only write when it moved.

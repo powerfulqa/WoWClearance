@@ -168,11 +168,8 @@ function NS.MakeSearchDebounce(editBox, fn, onText)
     return debounce
 end
 
--- Shared two-column stat row for the Stats - Guild / Stats - Server panels
--- (extracted v2.63.0: the two panels carried byte-identical copies that had
--- already cost one double-edit fix in v2.59.11). row.left is the label,
--- row.right the value FontString whose left edge sits at valueX (the only
--- thing that differed between the copies). Full panel width (reactive via
+-- Shared two-column stat row. row.left is the label, row.right the value
+-- FontString whose left edge sits at valueX. Full panel width (reactive via
 -- WC_compCache.setPanelWidth) so the row frame doubles as a hover target.
 function NS.MakeStatRow(parent, anchor, yOff, valueX)
     local row = CreateFrame("Frame", nil, parent)
@@ -413,23 +410,6 @@ function NS.MakeTimeDropdown(win, onSelect)
     end)
     dd:SetText(L["All time"])
     return dd
-end
-
--- Shared item hover for stat rows carrying row.itemID (the most-sold item
--- lists on Stats - Guild / Stats - Server). Extracted with MakeStatRow -
--- the OnEnter/OnLeave wiring was byte-identical in both panels.
-function NS.InstallStatRowItemHover(row)
-    row:EnableMouse(true)
-    row:SetScript("OnEnter", function(self)
-        if self.itemID then
-            GameTooltip:SetOwner(self, "ANCHOR_CURSOR")
-            GameTooltip:SetHyperlink("item:" .. self.itemID)
-            GameTooltip:Show()
-        end
-    end)
-    row:SetScript("OnLeave", function()
-        GameTooltip:Hide()
-    end)
 end
 
 -- MakeHelpIcon: small clickable [?] anchored next to a setting widget.

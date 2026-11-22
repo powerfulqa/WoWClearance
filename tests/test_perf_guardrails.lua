@@ -44,14 +44,16 @@
 -- the .toc (ProcShare, RealmComms, ServerShare shipped unscanned). The
 -- Locale file is excluded here as before.
 local SOURCE_PATHS = {}
-do
-    local fh = assert(io.open("WoWClearance.toc", "rb"), "WoWClearance.toc not found (run from repo root)")
-    local toc = fh:read("*a")
+-- v0.9.0: the optional Loot module (WoWClearance_Loot/) ships in the same
+-- zip as a second addon; its files are scanned alongside the core's.
+for _, toc in ipairs({ { "WoWClearance.toc", "" }, { "WoWClearance_Loot/WoWClearance_Loot.toc", "WoWClearance_Loot/" } }) do
+    local fh = assert(io.open(toc[1], "rb"), toc[1] .. " not found (run from repo root)")
+    local text = fh:read("*a")
     fh:close()
-    for line in (toc .. "\n"):gmatch("(.-)\r?\n") do
+    for line in (text .. "\n"):gmatch("(.-)\r?\n") do
         local f = line:match("^(WoWClearance_[%w_]+%.lua)%s*$")
         if f and not f:match("^WoWClearance_Locale") then
-            SOURCE_PATHS[#SOURCE_PATHS + 1] = f
+            SOURCE_PATHS[#SOURCE_PATHS + 1] = toc[2] .. f
         end
     end
 end
@@ -896,7 +898,7 @@ do
     -- The shared kit (WoWClearance_Kit.lua, same file as the sister
     -- addon's) spells it `local _, NS = ...`; both forms count.
     local bootstrapCount = 0
-    for _, form in ipairs({ "local NS = select(2, ...)", "local _, NS = ..." }) do
+    for _, form in ipairs({ "local NS = select(2, ...)", "local _, NS = ...", "local own = select(2, ...)" }) do
         local searchStart = 1
         while true do
             local s, e = src:find(form, searchStart, true)
@@ -3179,119 +3181,6 @@ do
 end
 
 -- ---------------------------------------------------------------------------
--- Test 57: Fast Loot AntiDoS throttle.
--- ---------------------------------------------------------------------------
--- AzerothCore antidos_opcode_policies caps per-opcode packets/sec at
--- 5-8 by default. A tight `for i = 1, GetNumLootItems() do LootSlot(i) end`
--- loop on a multi-slot corpse exceeds that threshold and triggers a
--- KickPlayer action on PE-style servers. WC's v2.21.0 Fast Loot refactor
--- uses an OnUpdate-driven queue throttled to one LootSlot call per
--- ~110 ms; this test locks that design so a future refactor cannot
--- silently regress to a tight loop without CI catching it.
-do
-    -- Strip comment lines (per-line %-%- prefix) so docstrings referencing
-    -- the bad pattern as a counter-example don't false-positive on the
-    -- negative invariants below.
-    local code = (src:gsub("\n[^\n]*", function(line)
-        local at = line:find("%-%-", 1, false)
-        if not at then return line end
-        return line:sub(1, at - 1)
-    end))
-
-    -- 1. Queue table present with safe delay (>= 0.10 s = 100 ms).
-    --    Pattern matches `lootQueue = { ... delay = 0.NN ... }`. Uses
-    --    `.-` (non-greedy any-char) rather than `[^}]-` so the match
-    --    spans nested table literals like `slots = {}` that appear
-    --    before the delay field.
-    local delayStr = src:match("lootQueue%s*=%s*{.-delay%s*=%s*(0%.%d+)")
-    local delay = tonumber(delayStr or "")
-    check(
-        "Fast Loot lootQueue.delay >= 0.10 (AntiDoS throttle floor)",
-        delay ~= nil and delay >= 0.10,
-        "Fast Loot drain must throttle at >= 100 ms to stay below AzerothCore "
-            .. "AntiDoS opcode rate limits (MaxAllowedCount is typically 5-8 "
-            .. "packets/sec). Found: " .. tostring(delayStr)
-    )
-
-    -- 2. OnUpdate driver consults the throttle interval before each
-    --    LootSlot call. Look for the time-since-last gate.
-    check(
-        "Fast Loot OnUpdate body checks (GetTime - lastLootAt) < delay",
-        src:find("GetTime%(%)%s*%-%s*qs%.lastLootAt") ~= nil
-            and src:find("<%s*qs%.delay") ~= nil,
-        "the OnUpdate driver must consult qs.delay between LootSlot calls; "
-            .. "without this gate the queue would drain in a single frame and "
-            .. "trigger AntiDoS"
-    )
-
-    -- 3. Exactly one bare `LootSlot(` call in shipped code (comment-
-    --    stripped). The legitimate call is the throttled LootSlot(slotIdx)
-    --    inside the OnUpdate body. The "LootSlot" string literal in
-    --    hooksecurefunc("LootSlot", ...) doesn't match because it's inside
-    --    quotes. ConfirmLootSlot(slot) doesn't match because the preceding
-    --    char "m" is alphanumeric (excluded by [^%w_]).
-    local lootSlotCalls = 0
-    for _ in code:gmatch("[^%w_]LootSlot%(") do
-        lootSlotCalls = lootSlotCalls + 1
-    end
-    check(
-        "exactly one LootSlot() call site in shipped source",
-        lootSlotCalls == 1,
-        "Fast Loot must dispatch through a single throttled LootSlot call site "
-            .. "(the OnUpdate driver). Extra call sites can bypass the "
-            .. "throttle and trigger AntiDoS kicks. Found " .. lootSlotCalls
-            .. " call site(s)."
-    )
-
-    -- 4. Negative invariant - no tight `for ... do ... LootSlot()` loop
-    --    anywhere in shipped source. Catches the kick-vulnerable pattern
-    --    even if a future contributor restores the original v2.16.0 drain
-    --    shape. The pattern matches a `for IDENT = NUM, ...` header on the
-    --    same line as a LootSlot( call (the typical one-liner) AND a
-    --    multi-line variant where the for-block contains LootSlot( before
-    --    the matching end.
-    local tightLoopOneLine = code:find(
-        "for%s+[%w_]+%s*=%s*[%w_]+%s*,[^\n]-do[^\n]-[^%w_]LootSlot%("
-    )
-    local tightLoopMultiLine = false
-    -- Scan each `for ... do` opening and look ahead bounded chars for
-    -- LootSlot( before the matching `end`. Bounded because Lua patterns
-    -- can't express balanced delimiters.
-    for openIdx in code:gmatch("()for%s+[%w_]+%s*=%s*[%w_]+%s*,[^\n]*do") do
-        local body = code:sub(openIdx, openIdx + 600)
-        if body:find("[^%w_]LootSlot%(") and not body:find("qs%.delay") then
-            tightLoopMultiLine = true
-            break
-        end
-    end
-    check(
-        "no tight `for ... do ... LootSlot()` loop in shipped source",
-        not tightLoopOneLine and not tightLoopMultiLine,
-        "Fast Loot must NOT drain via a tight for-loop; AzerothCore AntiDoS "
-            .. "will KickPlayer on packet burst. Use the WC_compCache.lootQueue "
-            .. "OnUpdate-throttled queue instead."
-    )
-
-    -- 5. LOOT_READY is the right event source. LOOT_OPENED fires earlier
-    --    and may queue against stale slot data, so it must NOT be
-    --    registered as a separate event handler. The "LOOT_OPENED"
-    --    string can still appear in comments (it does in the design
-    --    rationale comment block at line ~2120); the check uses the
-    --    comment-stripped `code` so doc references don't trip it.
-    check(
-        "LOOT_READY is registered (Fast Loot event source)",
-        src:find('RegisterEvent%("LOOT_READY"%)') ~= nil,
-        "LOOT_READY drives the lazy-build OnUpdate frame in WC_HandleLootReady"
-    )
-    check(
-        "LOOT_OPENED is NOT registered as a separate handler",
-        code:find('RegisterEvent%("LOOT_OPENED"%)') == nil,
-        "Fast Loot must consume LOOT_READY only; LOOT_OPENED can fire before "
-            .. "loot data is populated and would queue against stale slot info"
-    )
-end
-
--- ---------------------------------------------------------------------------
 -- Test 58: Delete-List affix gate honours manual Allow Sell.
 -- ---------------------------------------------------------------------------
 -- Pre-v2.32.x bug: a Rare/Epic item with an affix that the user had
@@ -4161,9 +4050,9 @@ do
     -- while a merchant / mail / quest window is open.
     check("Test 100i: per-day totals ride WC_BumpStat; coin gated on loot window + no transaction window",
         ev:find("WC_compCache%.bumpDay%(WC_compCache%.dayFields%[field%], delta%)") ~= nil
-            and ev:find('totalLootCopper = "g"') ~= nil
-            and ev:find("now <= %(WC_compCache%.lootMoneyUntil or 0%) and not WC_LootTransactionWindowOpen%(%)") ~= nil
-            and ev:find('elseif event == "LOOT_CLOSED" then\n%s*if WC_compCache%.lootMoneyUntil then\n%s*WC_compCache%.lootMoneyUntil = now %+ 2') ~= nil,
+            -- v0.9.0: looted coin moved to the Loot module (src covers it).
+            and src:find("now <= %(lootMoneyUntil or 0%) and not transactionWindowOpen%(%)") ~= nil
+            and src:find('elseif event == "LOOT_CLOSED" then\n%s*if lootMoneyUntil then\n%s*lootMoneyUntil = now %+ 2') ~= nil,
         "WC_BumpStat must feed bumpDay; coin must need an open (or just closed) loot window and no transaction window.")
 end
 
@@ -4475,7 +4364,7 @@ do
 end
 
 -- ---------------------------------------------------------------------------
--- Test 69 (v2.35.x): MainPanel GPH logic wires the 5-minute gate
+-- Test 69 (v2.35.x): the GPH stamp (Loot module since v0.9.0) wires the 5-minute gate
 -- and writes all three best-record fields atomically.
 -- ---------------------------------------------------------------------------
 -- The MainPanel RefreshStats body must:
@@ -4502,41 +4391,48 @@ do
         "test relies on reading the file directly; check the path or whether the panel has been renamed"
     )
 
+    -- v0.9.0: the gold-per-hour stamp moved to the Loot module.
+    local gf = io.open("WoWClearance_Loot/WoWClearance_LootCapture.lua", "r")
+    local gphSrc = gf and gf:read("*a") or ""
+    if gf then
+        gf:close()
+    end
+
     if panelSrc then
         check(
-            "MainPanel reads session.startedAt for GPH elapsed time",
-            panelSrc:find("session%.startedAt") ~= nil,
+            "LootCapture reads session.startedAt for GPH elapsed time",
+            gphSrc:find("session%.startedAt") ~= nil,
             "the session start timestamp must be read from WC_session.startedAt (or NS.session.startedAt) so the GPH rate calculation has the right base"
         )
 
         check(
-            "MainPanel applies the 5-minute (300s) gate before updating best",
-            panelSrc:find("elapsed%s*>=%s*300") ~= nil,
+            "LootCapture applies the 5-minute (300s) gate before updating best",
+            gphSrc:find("elapsed%s*>=%s*300") ~= nil,
             "the bestGPH update must require at least 300 seconds of session to filter early-session burst noise; a missing gate lets a 3-second burst inflate the best"
         )
 
         check(
-            "MainPanel writes DB.bestGPH on the best-update path",
-            panelSrc:find("DB%.bestGPH%s*=%s*sessionGPH") ~= nil,
+            "LootCapture writes DB.bestGPH on the best-update path",
+            gphSrc:find("DB%.bestGPH%s*=%s*sessionGPH") ~= nil,
             "the bestGPH field must be written when the gate passes; otherwise the user's best record never updates"
         )
 
         check(
-            "MainPanel writes DB.bestGPHAt on the best-update path",
-            panelSrc:find("DB%.bestGPHAt%s*=%s*time%(%)") ~= nil
-                or panelSrc:find("DB%.bestGPHAt%s*=%s*now") ~= nil,
+            "LootCapture writes DB.bestGPHAt on the best-update path",
+            gphSrc:find("DB%.bestGPHAt%s*=%s*time%(%)") ~= nil
+                or gphSrc:find("DB%.bestGPHAt%s*=%s*now") ~= nil,
             "the bestGPHAt timestamp must be written together with bestGPH so the panel can render the 'X days ago' context; a stale bestGPHAt would describe the wrong session. The write may use `time()` directly OR a `now` local hoisted from the same scope (v2.38.1: hoisted so the per-character DB and account-wide ADB writes share one timestamp)."
         )
 
         check(
-            "MainPanel writes DB.bestGPHZone on the best-update path",
-            panelSrc:find("DB%.bestGPHZone") ~= nil and panelSrc:find("GetRealZoneText") ~= nil,
+            "LootCapture writes DB.bestGPHZone on the best-update path",
+            gphSrc:find("DB%.bestGPHZone") ~= nil and gphSrc:find("GetRealZoneText") ~= nil,
             "the bestGPHZone snapshot via GetRealZoneText() must be written together with bestGPH so the panel can render the 'in <zone>' context"
         )
 
         check(
-            "MainPanel uses a 10-second floor on session GPH rate calculation",
-            panelSrc:find("elapsed%s*>=%s*10") ~= nil,
+            "LootCapture uses a 10-second floor on session GPH rate calculation",
+            gphSrc:find("elapsed%s*>=%s*10") ~= nil,
             "sub-10s extrapolation produces absurd Gold/Hour values (selling 1 grey in 1 second = thousands of g/h); the spec mandates a 10-second floor before the live rate displays"
         )
 
@@ -4752,11 +4648,12 @@ do
         )
 
         check(
-            "Test 80b: Stats panel attaches statsMoney + statsSessionGPH + statsBestGPH fields",
+            "Test 80b: Stats panel attaches statsMoney + statsNet, and no looting rows (v0.9.0 Loot module)",
             statsSrc:find("panel%.statsMoney") ~= nil
-                and statsSrc:find("panel%.statsSessionGPH") ~= nil
-                and statsSrc:find("panel%.statsBestGPH") ~= nil,
-            "Stats panel must hang the same panel.statsX attachments that MainPanel used to, so RefreshStats can write to them after the split"
+                and statsSrc:find("panel%.statsNet") ~= nil
+                and statsSrc:find("panel%.statsSessionGPH") == nil
+                and statsSrc:find("panel%.statsLootCoin") == nil,
+            "Stats panel must hang the panel.statsX attachments RefreshStats writes to; gold per hour and looted coin live on the Loot module's panel"
         )
     end
 
@@ -5157,28 +5054,24 @@ do
 
         -- Borrow C: DB schema + renderer + equipLoc whitelist.
         local schemaOK = evSrc:find("DB%.itemLevelOverlay%.enabled = false") ~= nil
-            and evSrc:find("DB%.itemLevelOverlay%.bags = true") ~= nil
-            and evSrc:find("DB%.itemLevelOverlay%.paperdoll = false") ~= nil
-            and evSrc:find("DB%.itemLevelOverlay%.merchant = false") ~= nil
         local rendererOK = bdSrc2:find("function WC_compCache%.applyItemLevelOverlay") ~= nil
             and bdSrc2:find("WC_ITEM_LEVEL_EQUIP_LOCS") ~= nil
             and bdSrc2:find("NS%.RefreshItemLevelOverlay") ~= nil
         check(
             "Test 88b: Borrow C - DB schema + renderer + equipLoc whitelist",
             schemaOK and rendererOK,
-            "EnsureDB must seed DB.itemLevelOverlay {enabled=false, bags=true, paperdoll=false, merchant=false}; BagDisplay must define applyItemLevelOverlay + the WC_ITEM_LEVEL_EQUIP_LOCS whitelist + NS.RefreshItemLevelOverlay. Without the schema, the panel toggles read nil and the renderer bails."
+            "EnsureDB must seed DB.itemLevelOverlay.enabled = false; BagDisplay must define applyItemLevelOverlay + the WC_ITEM_LEVEL_EQUIP_LOCS whitelist + NS.RefreshItemLevelOverlay. Without the schema, the panel toggles read nil and the renderer bails."
         )
 
-        -- Borrow C UI: master + 3 sub-toggles + the sync helper.
+        -- Borrow C UI: the master toggle. v0.9.0 removed the per-surface
+        -- sub-toggles with the character sheet and vendor surfaces.
         check(
-            "Test 88c: Borrow C - Item Highlighting panel surfaces master + 3 sub-toggles",
+            "Test 88c: Borrow C - Item Highlighting panel has the item-level master toggle, no surface sub-toggles",
             ihSrc2:find("WoWClearanceILvlMainCB") ~= nil
-                and ihSrc2:find('"WoWClearanceILvlCB_" %.%. sub%.key') ~= nil
-                and ihSrc2:find('{ key = "bags"') ~= nil
-                and ihSrc2:find('{ key = "paperdoll"') ~= nil
-                and ihSrc2:find('{ key = "merchant"') ~= nil
-                and ihSrc2:find("syncILvlSubsEnabled") ~= nil,
-            "Item Highlighting panel must create the master toggle frame (WoWClearanceILvlMainCB), build the 3 sub-toggle frames via the SUB_TOGGLES loop with keys bags/paperdoll/merchant, and define the syncILvlSubsEnabled helper that greys the subs out when the master is off."
+                and ihSrc2:find("WoWClearanceILvlCB_") == nil
+                and bdSrc2:find("PaperDollItemSlotButton_Update") == nil
+                and bdSrc2:find("MerchantFrame_Update") == nil,
+            "Item level shows on bag slots only; the paperdoll / merchant surfaces were removed as out of scope."
         )
 
         -- v2.37.0 polish: Borrow C extras - font-size slider, host bag-UI
@@ -5243,8 +5136,7 @@ do
                     and qpSrc:find("NS%.Quickstart%s*=%s*{") ~= nil
                     and qpSrc:find("autoOpenContainers") ~= nil
                     and qpSrc:find("protectAllTomes") ~= nil
-                    and qpSrc:find("itemLevelOverlay%.paperdoll") ~= nil
-                    and qpSrc:find("itemLevelOverlay%.merchant") ~= nil
+                    and qpSrc:find("itemLevelOverlay%.enabled") ~= nil
                     and qpSrc:find("maxILvl") ~= nil
                     -- Settings-only invariant: NEVER touch user list data
                     and qpSrc:find("DB%.whitelist") == nil
@@ -5298,7 +5190,9 @@ do
                     and evSrc:find('WC_BumpStatBucket%("soldItemsByQuality"') ~= nil
                     and evSrc:find('WC_BumpStatBucket%("deletedItemsByQuality"') ~= nil
                     and evSrc:find('WC_BumpStatBucket%("processCastCounts"') ~= nil
-                    and evSrc:find('WC_BumpStatBucket%("copperByZone"') ~= nil,
+                    -- v0.9.0: the zone bucket is written by the Loot module
+                    -- through the exposed helper.
+                    and src:find('WC_compCache%.bumpStatBucket%("copperByZone"') ~= nil,
                 "Every stat increment site must route through WC_BumpStat / WC_BumpStatBucket so the ADB.accountStats mirror is structurally guaranteed."
             )
             check(
@@ -5325,9 +5219,9 @@ do
                 "Reset Lifetime in Account view must clear ADB.accountStats.* + bestGPHChar; Character view keeps clearing DB.*."
             )
             check(
-                "Test 88ag: account-side bestGPH writes during RefreshStats",
-                mpS4:find("AS%.bestGPH%s*=%s*sessionGPH") ~= nil
-                    and mpS4:find("AS%.bestGPHChar%s*=%s*GetUnitName%(\"player\", true%)") ~= nil,
+                "Test 88ag: account-side bestGPH writes in the GPH stamp",
+                src:find("AS%.bestGPH%s*=%s*sessionGPH") ~= nil
+                    and src:find("AS%.bestGPHChar%s*=%s*GetUnitName%(\"player\", true%)") ~= nil,
                 "When a session beats the account-wide best, RefreshStats must stamp both the new record AND the character name onto ADB.accountStats so the Account view can show 'on <CharName>'."
             )
             -- v2.38.2: Turbo Mode FinishRun-fires-once invariant.
@@ -5897,7 +5791,7 @@ do
     local dp = kdp
     local mp = fileSrc("WoWClearance_MainPanel.lua")
     local br = fileSrc("WoWClearance_BugReport.lua")
-    local sp = fileSrc("WoWClearance_StatsPanel.lua")
+    local sp = fileSrc("WoWClearance_Loot/WoWClearance_LootWindow.lua")  -- Loot Log window (Loot module, v0.9.0)
 
 
 
@@ -5949,7 +5843,7 @@ do
             and br:find("NS%.HasConflictingDeleteAddon") ~= nil,
         "v2.49.2: /wc bugreport MUST include the neutral capability line under Environment Capabilities. Consumes NS.HasConflictingDeleteAddon so the source of truth is the same helper the PLAYER_LOGIN warning uses. The Loaded Addons dump further down already lists every addon by folder name - this line is the flag the maintainer scans for first.")
     check("Test 114: Loot Log window refresh is dirty-driven (WC_BumpLoot flags; window consumes) not an unconditional 1s rebuild",
-        ev:find("WC_compCache%.lootWindowDirty = true") ~= nil
+        src:find("WC_compCache%.lootWindowDirty = true") ~= nil
             and sp:find("WC_compCache%.lootWindowDirty") ~= nil
             and sp:find("self%._lootTick >= safetyEvery") ~= nil
             and sp:find("local safetyEvery = %(self%._primedLast or 0%) > 0 and 2%.0 or 15%.0") ~= nil,
@@ -6138,10 +6032,10 @@ do
         "the WC_CITY_ZONES_BY_LOCALE table must enumerate every WotLK city across the shipped locales (enUS/enGB, deDE, frFR, esES/esMX). Realm-wide aggregation pools across ALL clients' locales, so a French client sending 'Fossoyeuse' as their Undercity attribution needs to be recognized by an English receiver as a city entry. Additional locales (ruRU / koKR / zhCN / zhTW) can be added when specific localized names appear in the wild.")
     check("Test 120b: WC_compCache.isCityZone helper exists",
         src:find("function WC_compCache%.isCityZone%(zone%)") ~= nil,
-        "callers outside Events.lua that want to query the city set (e.g. future display-time filters in GuildShare / ServerShare / StatsPanel) MUST route through WC_compCache.isCityZone rather than duplicating a hardcoded list. Removing the helper is a mirror-drift trap.")
-    check("Test 120c: attributeCopperToZone skips city buckets before the bucket write",
-        src:find("if WC_CITY_ZONES%[zone%] then%s*return%s*end%s*.-WC_BumpStatBucket%(\"copperByZone\"") ~= nil,
-        "the city guard MUST early-return before WC_BumpStatBucket. Without it a mail-box vendor sale in Dalaran writes to DB.copperByZone['Dalaran'] and re-pollutes the leaderboard on the very next login.")
+        "callers outside Events.lua that want to query the city set (the Loot module's zone attribution) MUST route through WC_compCache.isCityZone rather than duplicating a hardcoded list. Removing the helper is a mirror-drift trap.")
+    check("Test 120c: onSoldCopper (Loot module) guards the zone bucket write with isCityZone",
+        src:find("if not WC_compCache%.isCityZone%(zone%) then%s*WC_compCache%.bumpStatBucket%(\"copperByZone\"") ~= nil,
+        "the city guard MUST wrap the bucket write. Without it a mail-box vendor sale in Dalaran writes to DB.copperByZone['Dalaran'] and re-pollutes the leaderboard on the very next login.")
     check("Test 120d: EnsureDB city scrub runs every login (v2.59.10 removed the one-shot gate)",
         src:find("DB%.copperByZone%[zone%] = nil") ~= nil
             and src:find("if not DB%.cityZonesScrubbed then") == nil,
@@ -6309,10 +6203,9 @@ do
         "WoWClearance_SellListPanels.lua",
         "WoWClearance_ProfilesPanel.lua",
         "WoWClearance_QuickstartPanel.lua",
-        "WoWClearance_GuildPanel.lua",
-        "WoWClearance_ServerStatsPanel.lua",
         "WoWClearance_StatsPanel.lua",
         "WoWClearance_ProcessBagsPanel.lua",
+        "WoWClearance_Loot/WoWClearance_GuildPanel.lua",
     }
     local violations = {}
     for _, path in ipairs(PANEL_FILES) do
@@ -6494,7 +6387,7 @@ do
         return s
     end
     local pw = fileSrc("WoWClearance_PanelWidgets.lua")
-    local sp = fileSrc("WoWClearance_StatsPanel.lua")
+    local sp = fileSrc("WoWClearance_Loot/WoWClearance_LootWindow.lua")  -- Loot Log window (Loot module, v0.9.0)
     local hw = fileSrc("WoWClearance_HistoryWindow.lua")
     local br = fileSrc("WoWClearance_BugReport.lua")
     local ev = fileSrc("WoWClearance_Events.lua")
@@ -6503,7 +6396,7 @@ do
         "NS.MakeSearchDebounce must live in WoWClearance_PanelWidgets.lua (hidden OnUpdate frame, 250ms countdown reset per keystroke).")
     check("Test 124b: both pop-out windows route their search through the helper",
         sp:find("NS%.MakeSearchDebounce%(") ~= nil and hw:find("NS%.MakeSearchDebounce%(") ~= nil,
-        "the Loot Log (StatsPanel) and Sold History (HistoryWindow) search boxes must use NS.MakeSearchDebounce; a raw OnTextChanged -> refresh reintroduces the per-keystroke full rebuild.")
+        "the Loot Log (LootWindow) and Sold History (HistoryWindow) search boxes must use NS.MakeSearchDebounce; a raw OnTextChanged -> refresh reintroduces the per-keystroke full rebuild.")
     check("Test 124c: session logs never front-shift at the cap",
         ev:find("table%.remove%(WC_recentSoldLog, 1%)") == nil
             and ev:find("table%.remove%(WC_recentDeletedLog, 1%)") == nil
@@ -6855,7 +6748,7 @@ do
         return s
     end
     local hw = readf("WoWClearance_HistoryWindow.lua")
-    local sp = readf("WoWClearance_StatsPanel.lua")
+    local sp = readf("WoWClearance_Loot/WoWClearance_LootWindow.lua")  -- Loot Log window (Loot module, v0.9.0)
     check("Test 133a: Sold History pauses its rebuild while dragging",
         hw:find("self._histDragging = true", 1, true) ~= nil
             and hw:find("if self._histDragging then", 1, true) ~= nil
@@ -7121,7 +7014,7 @@ do
 end
 
 -- ---------------------------------------------------------------------------
--- Test 142 (v0.6.1): three 3.3.5a habits that are wrong on Forever.
+-- Test 142 (v0.6.1): 3.3.5a habits that are wrong on Forever.
 -- ---------------------------------------------------------------------------
 do
     local function readAll(path)
@@ -7133,12 +7026,6 @@ do
         return src
     end
     local ev = readAll("WoWClearance_Events.lua")
-    check(
-        "Test 142a: Fast Loot reads locked as GetLootSlotInfo's 6th return",
-        ev:find("local _, _, _, _, _, locked = GetLootSlotInfo%(slotIdx%)") ~= nil
-            and ev:find("local _, _, _, _, locked = GetLootSlotInfo") == nil,
-        "Mainline added currencyID at 4; the 5th return is quality, always truthy, so every slot was skipped."
-    )
     check(
         "Test 142b: guild repair treats -1 as unlimited and caps by the bank balance",
         ev:find("if funds == %-1 or funds > bank then") ~= nil and ev:find("GetGuildBankMoney%(%)") ~= nil,
@@ -7191,9 +7078,18 @@ do
     -- Test 143f (2026-11-20): the client returns an empty realm name. The key
     -- must land on the character's saved partition, never a fresh one seeded
     -- from the old snapshot (wrong Keep List: kept items get sold).
+    -- v0.9.0: the realm fallback lives in NS.RealmName (Core); the key is
+    -- built from it. Both bodies run in one sandbox.
+    local cfh = io.open("WoWClearance_Core.lua", "rb")
+    local core = cfh and cfh:read("*a") or ""
+    if cfh then
+        cfh:close()
+    end
+    local realmFn = core:match("function NS%.RealmName%(%)(.-)\nend")
     local function keyWith(name, realm, chars)
         local fn = keyFn and loadstring("return function()" .. keyFn .. "\nend")
-        if not fn then
+        local rfn = realmFn and loadstring("return function()" .. realmFn .. "\nend")
+        if not (fn and rfn) then
             return nil
         end
         local env = {
@@ -7207,6 +7103,7 @@ do
             end,
             WoWClearanceDB = { chars = chars },
         }
+        env.NS = { RealmName = setfenv(rfn(), env) }
         return setfenv(fn(), env)()
     end
     check("Test 143f: with no realm name, the saved partition is reused",
@@ -7214,8 +7111,15 @@ do
             and keyWith("Serv Nocturne", "", {}) == "Serv Nocturne-"
             and keyWith("Serv Nocturne", "", { ["Serv Nocturne-R"] = {}, ["Serv Nocturne-S"] = {} }) == "Serv Nocturne-"
             and keyWith("Serv", "", { ["Serv Nocturne-R"] = {} }) == "Serv-"
-            and keyWith("Serv Nocturne", "R2", { ["Serv Nocturne-R"] = {} }) == "Serv Nocturne-R2",
+            and keyWith("Serv Nocturne", "R2", { ["Serv Nocturne-R"] = {} }) == "Serv Nocturne-R2"
+            and keyWith("Serv Nocturne", nil, { ["Serv Nocturne-R"] = {} }) == "Serv Nocturne-R",
         "an empty realm opened a new partition with an old Keep List, so items on the real Keep List could be sold.")
+    -- Display and loot paths read the realm through the same helper, so ""
+    -- never shows as "Name-" or breaks own-name matching.
+    check("Test 143g: no realm read bypasses NS.RealmName",
+        select(2, (src:gsub("%-%-[^\n]*", "")):gsub("GetRealmName%(", "")) == 1
+            and core:find("GetRealmName and GetRealmName()", 1, true) ~= nil,
+        "GetRealmName() returns \"\" since build 71037 and \"\" is truthy, so `GetRealmName() or \"?\"` never falls back; call NS.RealmName().")
     local del = ev:match("function WC_compCache%.executeBagSlotDelete%((.-)\nend\n")
     check("Test 143c: an own delete is counted only after the copy left its slot",
         del ~= nil
