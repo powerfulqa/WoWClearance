@@ -150,7 +150,17 @@ v2.34.x (see the `PER_CHAR_FIELDS` block near the top of
 - `WoWClearanceDB.chars[<character>-<realm>]` holds each character's
   live per-character data (Keep / Sell / Delete lists, profiles, the
   master `enabled` toggle, Process Bags ignore + collapsed sections, the
-  loot ledger, and since v0.6.0 the Sold History logs).
+  loot ledger, and since v0.6.0 the Sold History logs). The key is
+  "First Surname-Realm". Since 2026-11-20 the client returns an empty
+  realm name to addons, so the realm comes from `NS.RealmName()` (Core):
+  the client's realm when it gives one, else the realm of this
+  character's one saved partition, else nil (the key is then
+  "First Surname-"). Every realm read goes through it (pinned by Test
+  143g). Before v0.8.7 the empty realm made some characters save under
+  "First Surname-"; v0.9.1 adds that slot's loot counts and best gold
+  per hour into the real partition once (`WC_DBMergeEmptyRealmLoot`,
+  marker `WoWClearanceDB.emptyRealmMerged`, Test 143h) and leaves the
+  slot, with its old lists, untouched.
 - Top-level `WoWClearanceDB.<field>` is the **legacy snapshot** -
   frozen at migration time. It serves two roles: the seed each newly
   migrated character deep-copies on first load, and the downgrade

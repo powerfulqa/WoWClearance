@@ -394,6 +394,33 @@ local function WC_DBLegacyCharKey()
     return realm and ((UnitName("player") or "Unknown") .. "-" .. realm)
 end
 
+-- v0.9.1: between 2026-11-20 and v0.8.7 the empty realm name saved some
+-- of a character's data under "First Surname-" (no realm). Fold that slot's
+-- LOOT into the real partition, once: looted counts are added, the best
+-- gold-per-hour record keeps the higher one. Nothing else is taken - that
+-- slot also holds the old Keep / Sell Lists, which must never come back.
+-- The slot itself is left in place; `marks[from] = to` stops a re-add.
+-- Returns true when it merged.
+local function WC_DBMergeEmptyRealmLoot(chars, marks, fromKey, toKey)
+    local from, to = chars[fromKey], chars[toKey]
+    if fromKey == toKey or marks[fromKey] or type(from) ~= "table" or type(to) ~= "table" then
+        return false
+    end
+    marks[fromKey] = toKey
+    if type(from.lootedItemCounts) == "table" then
+        to.lootedItemCounts = type(to.lootedItemCounts) == "table" and to.lootedItemCounts or {}
+        for id, n in pairs(from.lootedItemCounts) do
+            if type(n) == "number" and n > 0 then
+                to.lootedItemCounts[id] = (to.lootedItemCounts[id] or 0) + n
+            end
+        end
+    end
+    if type(from.bestGPH) == "number" and from.bestGPH > (tonumber(to.bestGPH) or 0) then
+        to.bestGPH, to.bestGPHAt, to.bestGPHZone = from.bestGPH, from.bestGPHAt, from.bestGPHZone
+    end
+    return true
+end
+
 local function WC_DBDeepCopy(t)
     if type(t) ~= "table" then
         return t
@@ -685,6 +712,15 @@ local function EnsureDB()
             end
         end
         WoWClearanceDB.chars[charKey] = charNS
+    end
+    if not charNSIsTransient then
+        WoWClearanceDB.emptyRealmMerged = WoWClearanceDB.emptyRealmMerged or {}
+        WC_DBMergeEmptyRealmLoot(
+            WoWClearanceDB.chars,
+            WoWClearanceDB.emptyRealmMerged,
+            (GetUnitName("player", true) or "Unknown") .. "-",
+            charKey
+        )
     end
 
     -- v2.34.x cleanup pass for the cross-character auto-Keep leak.

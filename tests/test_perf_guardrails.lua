@@ -7120,6 +7120,32 @@ do
         select(2, (src:gsub("%-%-[^\n]*", "")):gsub("GetRealmName%(", "")) == 1
             and core:find("GetRealmName and GetRealmName()", 1, true) ~= nil,
         "GetRealmName() returns \"\" since build 71037 and \"\" is truthy, so `GetRealmName() or \"?\"` never falls back; call NS.RealmName().")
+    -- Test 143h (v0.9.1): the "First Surname-" slot from the empty-realm
+    -- window gives its loot to the real partition once, and nothing else.
+    local mergeSrc = ev:match("(local function WC_DBMergeEmptyRealmLoot%(.-\nend)\n")
+    local mergeFn = mergeSrc and loadstring(mergeSrc .. "\nreturn WC_DBMergeEmptyRealmLoot")
+    mergeFn = mergeFn and mergeFn()
+    local mergeOK = false
+    if mergeFn then
+        local chars = {
+            ["Serv Nocturne-"] = { lootedItemCounts = { [10] = 3, [11] = 2 }, bestGPH = 5000, bestGPHZone = "Arathi", blacklist = { [99] = true } },
+            ["Serv Nocturne-R"] = { lootedItemCounts = { [10] = 4 }, bestGPH = 4000, blacklist = { [1] = true } },
+        }
+        local marks = {}
+        local first = mergeFn(chars, marks, "Serv Nocturne-", "Serv Nocturne-R")
+        local again = mergeFn(chars, marks, "Serv Nocturne-", "Serv Nocturne-R")
+        local to = chars["Serv Nocturne-R"]
+        local same = mergeFn({ ["A-"] = {} }, {}, "A-", "A-")
+        mergeOK = first == true and again == false and same == false
+            and to.lootedItemCounts[10] == 7 and to.lootedItemCounts[11] == 2
+            and to.bestGPH == 5000 and to.bestGPHZone == "Arathi"
+            and to.blacklist[99] == nil and to.blacklist[1] == true
+            and marks["Serv Nocturne-"] == "Serv Nocturne-R"
+            and chars["Serv Nocturne-"].lootedItemCounts[10] == 3
+    end
+    check("Test 143h: empty-realm slot loot merges once, adds counts, keeps lists out",
+        mergeOK and ev:find("WC_DBMergeEmptyRealmLoot%(\n%s*WoWClearanceDB%.chars,\n%s*WoWClearanceDB%.emptyRealmMerged,") ~= nil,
+        "a second merge would double the loot counts; copying the old slot's lists would bring back an old Keep / Sell List.")
     local del = ev:match("function WC_compCache%.executeBagSlotDelete%((.-)\nend\n")
     check("Test 143c: an own delete is counted only after the copy left its slot",
         del ~= nil

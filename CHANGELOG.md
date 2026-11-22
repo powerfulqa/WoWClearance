@@ -6,6 +6,15 @@ release history is in [its own changelog](https://github.com/powerfulqa/EbonClea
 Version numbers there belong to that project and do not continue into
 this one.
 
+### v0.9.1
+
+- **Loot from the missing-realm days is back on your character.** On
+  20-21 November, before v0.8.7, the empty realm name made the game save
+  some loot under a separate slot. The Account and History views had it,
+  but the Character view did not. It is now added to your character
+  once, and your best gold per hour keeps the higher record. Your Keep
+  and Sell Lists are not touched.
+
 ### v0.9.0
 
 Loot tracking and guild stats move into an optional module that you can
